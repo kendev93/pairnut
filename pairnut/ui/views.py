@@ -34,6 +34,7 @@ class PairNutUI:
                 content=ft.Column(
                     controls=[
                         self._build_header(),
+                        self._build_brand_banner(),
                         self._build_navigation(),
                         ft.Divider(),
                         self._build_view(),
@@ -61,6 +62,51 @@ class PairNutUI:
                 status_text(self.status_message),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+
+    def _build_brand_banner(self) -> ft.Container:
+        return ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Container(
+                        content=ft.Image(
+                            src="cover.png",
+                            height=210,
+                            fit=ft.BoxFit.CONTAIN,
+                            border_radius=16,
+                        ),
+                        bgcolor=ft.Colors.WHITE,
+                        padding=16,
+                        border_radius=20,
+                    ),
+                    ft.Column(
+                        controls=[
+                            ft.Text("文玩核桃智能配对工具", size=26, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "先按品种建规则，再录入核桃数据，用三维偏差、克重接近度和瑕疵扣分生成候选配对。",
+                                size=15,
+                                color=ft.Colors.BLUE_GREY_600,
+                            ),
+                            ft.Row(
+                                controls=[
+                                    ft.Chip(label=ft.Text("同品种内配对"), bgcolor=ft.Colors.BROWN_50),
+                                    ft.Chip(label=ft.Text("瑕疵参与扣分"), bgcolor=ft.Colors.AMBER_50),
+                                    ft.Chip(label=ft.Text("候选可锁定/拉黑"), bgcolor=ft.Colors.BLUE_50),
+                                ],
+                                wrap=True,
+                                spacing=10,
+                            ),
+                        ],
+                        spacing=14,
+                        expand=True,
+                    ),
+                ],
+                spacing=24,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=20,
+            border_radius=24,
+            bgcolor=ft.Colors.BLUE_GREY_50,
         )
 
     def _build_navigation(self) -> ft.Row:

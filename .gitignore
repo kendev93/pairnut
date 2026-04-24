@@ -146,6 +146,7 @@ venv.bak/
 .omc/
 .omx/
 .claude/
+.serena/
 
 # Spyder project settings
 .spyderproject

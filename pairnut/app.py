@@ -13,6 +13,7 @@ def main(page: ft.Page) -> None:
     page.theme_mode = ft.ThemeMode.LIGHT
     page.padding = 0
     page.spacing = 0
+    page.window.icon = "icon.png"
     page.window.min_width = 1200
     page.window.min_height = 800
 

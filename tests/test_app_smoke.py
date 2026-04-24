@@ -51,6 +51,7 @@ class AppSmokeTests(unittest.TestCase):
         page = FakePage()
         app_module.main(page)
         self.assertEqual(page.title, "PairNut")
+        self.assertEqual(page.window.icon, "icon.png")
         self.assertEqual(page.window.min_width, 1200)
         self.assertEqual(page.window.min_height, 800)
         self.assertEqual(len(page.controls), 1)
