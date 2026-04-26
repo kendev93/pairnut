@@ -1,22 +1,35 @@
-"""Flet application coordinator."""
+"""PySide6 application coordinator."""
 
 from __future__ import annotations
 
-import flet as ft
+import sys
+from pathlib import Path
+
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 
 from .database import init_database
-from .ui.views import PairNutUI
+from .ui.views import PairNutMainWindow
 
 
-def main(page: ft.Page) -> None:
-    page.title = "PairNut"
-    page.theme_mode = ft.ThemeMode.LIGHT
-    page.padding = 0
-    page.spacing = 0
-    page.window.icon = "icon.png"
-    page.window.min_width = 1200
-    page.window.min_height = 800
+def assets_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "assets"
 
+
+def build_application(argv: list[str] | None = None) -> tuple[QApplication, PairNutMainWindow]:
+    app = QApplication.instance() or QApplication(argv or sys.argv)
+    app.setApplicationName("PairNut")
+    app.setOrganizationName("PairNut")
+    icon_path = assets_dir() / "icon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     init_database()
-    ui = PairNutUI(page)
-    ui.render()
+    window = PairNutMainWindow(icon_path=icon_path)
+    app.aboutToQuit.connect(window._teardown_ui)
+    return app, window
+
+
+def run(argv: list[str] | None = None) -> int:
+    app, window = build_application(argv)
+    window.show()
+    return app.exec()

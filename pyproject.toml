@@ -5,16 +5,5 @@ description = "Local desktop walnut matching tool for merchants."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "flet>=0.84.0",
+    "PySide6>=6.11.0",
 ]
-
-[tool.flet]
-org = "com.pairnut"
-product = "PairNut"
-company = "PairNut"
-copyright = "Copyright (C) 2026 PairNut"
-build_number = 1
-
-[tool.flet.macos.info]
-LSApplicationCategoryType = "public.app-category.utilities"
-NSSupportsSuddenTermination = true

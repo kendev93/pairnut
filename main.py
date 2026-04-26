@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """PairNut desktop entrypoint."""
 
-import flet as ft
-
-from pairnut.app import main
+from pairnut.app import run
 
 
 if __name__ == "__main__":
-    ft.run(main, assets_dir="assets")
+    raise SystemExit(run())
