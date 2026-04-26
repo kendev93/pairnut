@@ -20,12 +20,29 @@ python3 -m pip install -r requirements.txt
 python3 main.py
 ```
 
+## 打包
+
+GitHub Actions 已配置桌面端打包流程：
+
+- 手动运行 `Build desktop packages`
+- 推送 `v*` 标签时自动运行
+- Windows 产出 `PairNut.exe`
+- macOS 产出 `PairNut-macOS-*.dmg`
+
+本地构建图标资源：
+
+```bash
+python3 -m pip install -r requirements-build.txt
+python3 scripts/build_icons.py
+```
+
 ## 当前目录
 
 ```text
 pairnut/
 ├── main.py
 ├── requirements.txt
+├── requirements-build.txt
 ├── assets/
 │   ├── cover.png
 │   └── icon.png              # 应用图标建议放这里
@@ -37,6 +54,8 @@ pairnut/
 │   ├── domain/
 │   ├── services/
 │   └── ui/
+├── scripts/
+│   └── build_icons.py
 └── tests/
 ```
 

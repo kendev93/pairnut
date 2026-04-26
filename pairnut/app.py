@@ -13,6 +13,9 @@ from .ui.views import PairNutMainWindow
 
 
 def assets_dir() -> Path:
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(frozen_root) / "assets"
     return Path(__file__).resolve().parents[1] / "assets"
 
 

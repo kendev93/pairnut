@@ -1,0 +1,107 @@
+name: Build desktop packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+env:
+  PYTHON_VERSION: "3.13"
+  APP_NAME: PairNut
+
+jobs:
+  build-windows:
+    name: Build Windows exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Build icons
+        run: python scripts/build_icons.py
+
+      - name: Build executable
+        shell: pwsh
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --onefile
+          --windowed
+          --name "${{ env.APP_NAME }}"
+          --icon "build/icons/icon.ico"
+          --add-data "assets;assets"
+          main.py
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PairNut-windows-x64
+          path: dist/PairNut.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS dmg
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Build icons
+        run: python scripts/build_icons.py
+
+      - name: Build app bundle
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --onedir
+          --windowed
+          --name "${APP_NAME}"
+          --icon "build/icons/icon.icns"
+          --add-data "assets:assets"
+          main.py
+
+      - name: Create dmg
+        run: |
+          mkdir -p dist/dmg
+          hdiutil create \
+            -volname "${APP_NAME}" \
+            -srcfolder "dist/${APP_NAME}.app" \
+            -ov \
+            -format UDZO \
+            "dist/dmg/${APP_NAME}-macOS-${{ runner.arch }}.dmg"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PairNut-macOS-${{ runner.arch }}
+          path: dist/dmg/*.dmg
+          if-no-files-found: error
