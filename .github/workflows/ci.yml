@@ -13,13 +13,14 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  PAIRNUT_DATA_DIR: ${{ runner.temp }}/pairnut-data
   QT_QPA_PLATFORM: offscreen
 
 jobs:
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    env:
+      PAIRNUT_DATA_DIR: ${{ runner.temp }}/pairnut-data
 
     strategy:
       fail-fast: false
