@@ -34,5 +34,5 @@ def build_application(argv: list[str] | None = None) -> tuple[QApplication, Pair
 
 def run(argv: list[str] | None = None) -> int:
     app, window = build_application(argv)
-    window.show()
+    window.showMaximized()
     return app.exec()
