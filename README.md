@@ -1,5 +1,10 @@
 # PairNut
 
+[![CI](https://github.com/kendev93/pairnut/actions/workflows/ci.yml/badge.svg)](https://github.com/kendev93/pairnut/actions/workflows/ci.yml)
+[![Build desktop packages](https://github.com/kendev93/pairnut/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/kendev93/pairnut/actions/workflows/build-desktop.yml)
+[![CodeQL](https://github.com/kendev93/pairnut/actions/workflows/codeql.yml/badge.svg)](https://github.com/kendev93/pairnut/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/github/license/kendev93/pairnut)](LICENSE)
+
 ![PairNut Cover](assets/cover.png)
 
 核对（PairNut）是一款面向文玩核桃商家的本地智能配对工具。
@@ -28,6 +33,7 @@ GitHub Actions 已配置桌面端打包流程：
 - 推送 `v*` 标签时自动运行
 - Windows 产出 `PairNut.exe`
 - macOS 产出 `PairNut-macOS-*.dmg`
+- 推送 `v*` 标签时自动创建 GitHub Release，并挂载 exe / dmg
 
 本地构建图标资源：
 
@@ -35,6 +41,14 @@ GitHub Actions 已配置桌面端打包流程：
 python3 -m pip install -r requirements-build.txt
 python3 scripts/build_icons.py
 ```
+
+## 自动化
+
+- `CI`：push / PR 自动运行编译检查和测试
+- `Build desktop packages`：手动或 tag 触发桌面端打包
+- `CodeQL`：自动做 Python 代码安全扫描
+- `Dependency audit`：每周扫描 Python 依赖漏洞
+- `Dependabot`：每周检查 Python 依赖和 GitHub Actions 更新
 
 ## 当前目录
 

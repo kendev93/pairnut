@@ -1,0 +1,35 @@
+name: Packaging problem
+description: Report a Windows exe or macOS dmg problem.
+title: "[Packaging]: "
+labels:
+  - packaging
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows exe
+        - macOS dmg
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PairNut version or workflow run
+      placeholder: v0.1.0 or workflow URL
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What failed during install, launch, or use?
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste logs, macOS crash reports, Windows error dialogs, or screenshots.
+      render: text
