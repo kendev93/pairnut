@@ -20,7 +20,7 @@ jobs:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     env:
-      PAIRNUT_DATA_DIR: ${{ runner.temp }}/pairnut-data
+      PAIRNUT_DATA_DIR: .tmp/pairnut-data
 
     strategy:
       fail-fast: false
