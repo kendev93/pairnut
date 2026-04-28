@@ -91,6 +91,13 @@ class MatchingTests(unittest.TestCase):
         for candidate in result[self.w3]:
             self.assertNotEqual(candidate.walnut_id, self.w2)
 
+    def test_unlock_after_second_lock_same_pair(self) -> None:
+        """Regression: old unique index on (pair, is_active) blocked a second unlock."""
+        first = repositories.lock_pair(self.variety_id, self.w1, self.w2)
+        repositories.unlock_pair(first)
+        second = repositories.lock_pair(self.variety_id, self.w1, self.w2)
+        repositories.unlock_pair(second)
+
     def test_blacklisted_pair_never_reappears(self) -> None:
         repositories.create_blacklist_pair(self.variety_id, self.w1, self.w2)
         result = get_candidates_for_walnut(self.w1)

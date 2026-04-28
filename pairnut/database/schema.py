@@ -65,10 +65,6 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_locked_pairs_active_pair
-    ON locked_pairs (walnut_id_1, walnut_id_2, is_active)
-    """,
-    """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pair_blacklist_pair
     ON pair_blacklist (walnut_id_1, walnut_id_2)
     """,
@@ -79,9 +75,27 @@ SCHEMA_STATEMENTS = [
 ]
 
 
+def _ensure_locked_pairs_active_unique_index(conn) -> None:
+    """Ensure at most one active lock per walnut pair; allow multiple inactive history rows.
+
+    The previous index included ``is_active`` in the key, which forbade more than one
+    unlocked history row for the same pair (lock → unlock → lock → unlock failed).
+    """
+    cursor = conn.cursor()
+    cursor.execute("DROP INDEX IF EXISTS idx_locked_pairs_active_pair")
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX idx_locked_pairs_active_pair
+        ON locked_pairs (walnut_id_1, walnut_id_2)
+        WHERE is_active = 1
+        """
+    )
+
+
 def init_database() -> None:
     """Create the current schema."""
     with db_connection() as conn:
         cursor = conn.cursor()
         for statement in SCHEMA_STATEMENTS:
             cursor.execute(statement)
+        _ensure_locked_pairs_active_unique_index(conn)
