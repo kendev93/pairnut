@@ -65,6 +65,18 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS walnut_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        walnut_id INTEGER NOT NULL,
+        face_no INTEGER NOT NULL CHECK(face_no BETWEEN 1 AND 6),
+        original_filename TEXT NOT NULL,
+        stored_path TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        FOREIGN KEY (walnut_id) REFERENCES walnuts(id) ON DELETE CASCADE,
+        UNIQUE (walnut_id, face_no)
+    )
+    """,
+    """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pair_blacklist_pair
     ON pair_blacklist (walnut_id_1, walnut_id_2)
     """,

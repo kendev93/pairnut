@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -42,6 +43,7 @@ from shiboken6 import isValid
 
 from ..database import get_data_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
+from ..services.images import import_walnut_images
 from ..services.matching import get_candidates_for_variety
 from ..services.serials import next_serial_no
 from ..services.updates import UpdateInfo, check_for_update
@@ -766,8 +768,8 @@ class VarietyScopedWidget(QWidget):
 class WalnutTab(VarietyScopedWidget):
     def __init__(self, window: "PairNutMainWindow"):
         super().__init__(window)
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["编号", "边", "肚", "高", "克重", "瑕疵", "状态"])
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels(["编号", "边", "肚", "高", "克重", "瑕疵", "图片", "状态"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -780,6 +782,7 @@ class WalnutTab(VarietyScopedWidget):
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Stretch)
         self.table.itemSelectionChanged.connect(self._sync_action_state)
 
         hero = create_card()
@@ -789,7 +792,7 @@ class WalnutTab(VarietyScopedWidget):
         eyebrow.setProperty("role", "eyebrow")
         title = QLabel("录入与维护核桃数据")
         title.setProperty("role", "headline")
-        subtitle = QLabel("按品种录入核桃的边、肚、高、克重和瑕疵情况，自动编号与手动编号都支持。")
+        subtitle = QLabel("按品种录入核桃基础数据；六面图可按 核桃编号-序号 批量导入，如：NJS-0001-1。")
         subtitle.setProperty("role", "subtle")
         toolbar = QHBoxLayout()
         toolbar.addWidget(QLabel("当前品种"))
@@ -800,11 +803,17 @@ class WalnutTab(VarietyScopedWidget):
         self.add_button.clicked.connect(self.create_walnut)
         self.edit_button = QPushButton("编辑选中")
         self.edit_button.clicked.connect(self.edit_selected_walnut)
+        self.import_images_button = QPushButton("批量导入图片")
+        self.import_images_button.clicked.connect(self.import_images)
+        self.naming_help_button = QPushButton("命名规则")
+        self.naming_help_button.clicked.connect(self.show_image_naming_help)
         self.delete_button = QPushButton("删除选中")
         self.delete_button.setProperty("variant", "danger")
         self.delete_button.clicked.connect(self.delete_selected_walnut)
         toolbar.addWidget(self.add_button)
         toolbar.addWidget(self.edit_button)
+        toolbar.addWidget(self.import_images_button)
+        toolbar.addWidget(self.naming_help_button)
         toolbar.addWidget(self.delete_button)
         hero_layout.addWidget(eyebrow)
         hero_layout.addWidget(title)
@@ -835,6 +844,7 @@ class WalnutTab(VarietyScopedWidget):
                 f'{walnut["height_mm"]:.2f}',
                 f'{walnut["weight_g"]:.2f}',
                 walnut["defect_level"],
+                f'{len(repositories.list_walnut_images(int(walnut["id"])))} / 6',
                 "已锁定" if walnut["is_locked"] else "未锁定",
             ]
             for column, value in enumerate(values):
@@ -867,6 +877,7 @@ class WalnutTab(VarietyScopedWidget):
         has_selection = self._selected_walnut_id() is not None
         self.edit_button.setEnabled(has_selection)
         self.delete_button.setEnabled(has_selection)
+        self.import_images_button.setEnabled(self.window.selected_variety_id is not None)
 
     def edit_selected_walnut(self) -> None:
         walnut_id = self._selected_walnut_id()
@@ -916,6 +927,42 @@ class WalnutTab(VarietyScopedWidget):
             self.window.refresh_all()
         except Exception as exc:
             self.window.show_error(f"删除核桃失败: {exc}")
+
+    def import_images(self) -> None:
+        variety_id = self.window.selected_variety_id
+        if not variety_id:
+            self.window.show_error("请先创建并选中一个品种。")
+            return
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "批量导入六面图",
+            "",
+            "图片文件 (*.jpg *.jpeg *.png *.webp *.bmp *.heic)",
+        )
+        if not files:
+            return
+        result = import_walnut_images(files, variety_id)
+        message = f"已导入 {result.imported_count} 张，覆盖 {result.replaced_count} 张。"
+        if result.skipped:
+            message += "\n\n未导入：\n" + "\n".join(result.skipped[:12])
+            if len(result.skipped) > 12:
+                message += f"\n... 还有 {len(result.skipped) - 12} 条"
+        QMessageBox.information(self, "图片导入完成", message)
+        self.window.refresh_all()
+
+    def show_image_naming_help(self) -> None:
+        QMessageBox.information(
+            self,
+            "图片命名规则",
+            "请先在核桃管理里建好对应编号，再批量选择图片。\n\n"
+            "文件名格式：核桃编号-序号.扩展名\n"
+            "序号范围：1 到 6\n\n"
+            "示例：\n"
+            "NJS-01-1.JPG\n"
+            "NJS-01-2.JPG\n"
+            "NJS-01-3.JPG\n\n"
+            "也支持下划线或空格分隔，例如 NJS-01_1.JPG。",
+        )
 
 
 class MatchingTab(VarietyScopedWidget):

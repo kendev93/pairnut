@@ -136,6 +136,15 @@ def get_walnut_by_serial(serial_no: str) -> dict[str, Any] | None:
         return row_to_dict(row)
 
 
+def get_walnut_by_serial_and_variety(serial_no: str, variety_id: int) -> dict[str, Any] | None:
+    with db_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM walnuts WHERE serial_no = ? AND variety_id = ?",
+            (serial_no.strip(), variety_id),
+        ).fetchone()
+        return row_to_dict(row)
+
+
 def list_walnuts(variety_id: int | None = None, include_locked: bool = True) -> list[dict[str, Any]]:
     query = """
         SELECT walnuts.*, varieties.name AS variety_name, varieties.code_prefix, varieties.tolerance_mm
@@ -154,6 +163,42 @@ def list_walnuts(variety_id: int | None = None, include_locked: bool = True) -> 
     query += " ORDER BY walnuts.serial_no COLLATE NOCASE"
     with db_connection() as conn:
         rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def upsert_walnut_image(walnut_id: int, face_no: int, original_filename: str, stored_path: str) -> int:
+    timestamp = now_str()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO walnut_images (walnut_id, face_no, original_filename, stored_path, imported_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(walnut_id, face_no) DO UPDATE SET
+                original_filename = excluded.original_filename,
+                stored_path = excluded.stored_path,
+                imported_at = excluded.imported_at
+            """,
+            (walnut_id, face_no, original_filename, stored_path, timestamp),
+        )
+        row = cursor.execute(
+            "SELECT id FROM walnut_images WHERE walnut_id = ? AND face_no = ?",
+            (walnut_id, face_no),
+        ).fetchone()
+        return int(row["id"])
+
+
+def list_walnut_images(walnut_id: int) -> list[dict[str, Any]]:
+    with db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM walnut_images
+            WHERE walnut_id = ?
+            ORDER BY face_no
+            """,
+            (walnut_id,),
+        ).fetchall()
         return [dict(row) for row in rows]
 
 
