@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QIcon, QPixmap
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QAbstractItemView,
@@ -40,10 +40,11 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from ..database import repositories
+from ..database import get_data_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
 from ..services.matching import get_candidates_for_variety
 from ..services.serials import next_serial_no
+from ..services.updates import UpdateInfo, check_for_update
 
 
 APP_STYLESHEET = """
@@ -315,6 +316,13 @@ def create_chip(text: str, background: str = "#f2e7d7", foreground: str = "#6d57
         f"background: {background}; color: {foreground}; border-radius: 11px; padding: 6px 12px; font-weight: 600;"
     )
     return chip
+
+
+class UpdateCheckWorker(QObject):
+    finished = Signal(object)
+
+    def run(self) -> None:
+        self.finished.emit(check_for_update())
 
 
 @dataclass(slots=True)
@@ -1087,6 +1095,9 @@ class PairNutMainWindow(QMainWindow):
         super().__init__()
         self.icon_path = icon_path
         self.selected_variety_id: int | None = None
+        self._update_thread: QThread | None = None
+        self._update_worker: UpdateCheckWorker | None = None
+        self._update_check_silent = True
         self.setWindowTitle("PairNut")
         self.resize(1440, 920)
         self.setMinimumSize(1280, 820)
@@ -1116,6 +1127,7 @@ class PairNutMainWindow(QMainWindow):
 
         self._build_menu()
         self.refresh_all()
+        QTimer.singleShot(1800, self.check_for_updates_silently)
 
     def _build_sidebar(self) -> QFrame:
         sidebar = create_card()
@@ -1211,11 +1223,17 @@ class PairNutMainWindow(QMainWindow):
     def _build_menu(self) -> None:
         refresh_action = QAction("刷新全部", self)
         refresh_action.triggered.connect(self.refresh_all)
+        data_dir_action = QAction("显示数据目录", self)
+        data_dir_action.triggered.connect(self.show_data_dir)
+        update_action = QAction("检查更新", self)
+        update_action.triggered.connect(self.check_for_updates)
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self.close)
 
         menu = self.menuBar().addMenu("文件")
         menu.addAction(refresh_action)
+        menu.addAction(data_dir_action)
+        menu.addAction(update_action)
         menu.addSeparator()
         menu.addAction(quit_action)
 
@@ -1265,6 +1283,58 @@ class PairNutMainWindow(QMainWindow):
         QMessageBox.critical(self, "PairNut", message)
         self.status_bar.showMessage(message, 8000)
 
+    def show_data_dir(self) -> None:
+        QMessageBox.information(self, "数据目录", f"当前数据目录:\n{get_data_dir()}")
+
+    def check_for_updates_silently(self) -> None:
+        self._start_update_check(silent=True)
+
+    def check_for_updates(self) -> None:
+        self._start_update_check(silent=False)
+
+    def _start_update_check(self, silent: bool) -> None:
+        if self._update_thread is not None:
+            if not silent:
+                self.show_message("正在检查更新...")
+            return
+        self._update_check_silent = silent
+        if not silent:
+            self.show_message("正在检查更新...")
+
+        self._update_thread = QThread(self)
+        self._update_worker = UpdateCheckWorker()
+        self._update_worker.moveToThread(self._update_thread)
+        self._update_thread.started.connect(self._update_worker.run)
+        self._update_worker.finished.connect(self._handle_update_result)
+        self._update_worker.finished.connect(self._update_thread.quit)
+        self._update_worker.finished.connect(self._update_worker.deleteLater)
+        self._update_thread.finished.connect(self._finish_update_check)
+        self._update_thread.start()
+
+    def _finish_update_check(self) -> None:
+        if self._update_thread is not None:
+            self._update_thread.deleteLater()
+        self._update_thread = None
+        self._update_worker = None
+
+    def _handle_update_result(self, info: UpdateInfo) -> None:
+        if info.has_update and info.release_url:
+            message = (
+                f"发现新版本 {info.latest_version}。\n"
+                f"当前版本 {info.current_version}。\n\n"
+                "是否打开下载页面？"
+            )
+            if QMessageBox.question(self, "发现新版本", message) == QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl(info.release_url))
+            return
+
+        if self._update_check_silent:
+            return
+        if info.error:
+            self.show_error(f"检查更新失败: {info.error}")
+        else:
+            self.show_message(f"当前已是最新版本: {info.current_version}")
+
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._teardown_ui()
         super().closeEvent(event)
@@ -1276,6 +1346,10 @@ class PairNutMainWindow(QMainWindow):
 
         # On macOS with PySide6/Python 3.13, explicit teardown avoids
         # wrapper/child deletion happening in an unsafe order during GC.
+        if self._update_thread is not None:
+            self._update_thread.quit()
+            self._update_thread.wait(7000)
+            self._finish_update_check()
         for attr_name in ("variety_tab", "walnut_tab", "matching_tab", "stack", "nav"):
             widget = getattr(self, attr_name, None)
             if widget is not None and isValid(widget):

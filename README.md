@@ -12,9 +12,10 @@
 当前版本聚焦本地桌面使用场景：
 - PySide6 桌面界面
 - Python 业务逻辑
-- SQLite 本地存储
+- SQLite 本地存储，默认数据目录为 `~/Documents/PairNut`
 - 按品种管理核桃与配对规则
 - 基于边 / 肚 / 高偏差、克重接近度、瑕疵扣分的候选配对
+- 启动后自动检查 GitHub Release 新版本，并引导用户下载更新
 
 ## 启动
 
@@ -25,6 +26,16 @@ python3 -m pip install -r requirements.txt
 python3 main.py
 ```
 
+## 数据目录
+
+PairNut 的业务数据不放在软件安装目录或源码目录中。默认数据仓库为：
+
+```text
+~/Documents/PairNut/
+```
+
+其中 `pairnut.db` 保存核桃、品种和配对记录；后续导入图片会放在该目录下的 `images/`。升级或重装软件时，不要删除这个数据目录。开发和测试可通过 `PAIRNUT_DATA_DIR` 指向临时目录。
+
 ## 打包
 
 GitHub Actions 已配置桌面端打包流程：
@@ -34,6 +45,7 @@ GitHub Actions 已配置桌面端打包流程：
 - Windows 产出 `PairNut.exe`
 - macOS 产出 `PairNut-macOS-*.dmg`
 - 推送 `v*` 标签时自动创建 GitHub Release，并挂载 exe / dmg
+- 客户端通过最新 GitHub Release 判断是否有新版本；当前版本只提示下载，不后台替换程序
 
 本地构建图标资源：
 
@@ -60,8 +72,6 @@ pairnut/
 ├── assets/
 │   ├── cover.png
 │   └── icon.png              # 应用图标建议放这里
-├── data/
-│   └── pairnut.db           # 首次运行后自动创建
 ├── pairnut/
 │   ├── app.py
 │   ├── database/
