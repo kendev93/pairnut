@@ -134,11 +134,42 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
+
+      - name: Build release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          awk -v tag="${TAG_NAME}" '
+            $0 == "## " tag { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > product-notes.md
+
+          if [ ! -s product-notes.md ]; then
+            echo "本版本包含若干功能改进和问题修复。" > product-notes.md
+          fi
+
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${TAG_NAME}" \
+            --jq ".body" > generated-notes.md
+
+          {
+            cat product-notes.md
+            echo
+            echo "---"
+            echo
+            cat generated-notes.md
+          } > release-notes.md
 
       - name: Create release
         env:
@@ -148,4 +179,4 @@ jobs:
           gh release create "$TAG_NAME" release-assets/* \
             --repo "${{ github.repository }}" \
             --title "PairNut ${TAG_NAME}" \
-            --generate-notes
+            --notes-file release-notes.md
