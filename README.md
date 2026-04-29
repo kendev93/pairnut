@@ -15,7 +15,7 @@
 - SQLite 本地存储，默认数据目录为 `~/Documents/PairNut`
 - 按品种管理核桃与配对规则
 - 基于边 / 肚 / 高偏差、克重接近度、瑕疵扣分的候选配对
-- 启动后自动检查 GitHub Release 新版本，并引导用户下载更新
+- 启动后自动检查 Gitee Release 新版本，并引导用户下载更新
 
 ## 启动
 
@@ -45,7 +45,7 @@ GitHub Actions 已配置桌面端打包流程：
 - Windows 产出 `PairNut.exe`
 - macOS 产出 `PairNut-macOS-*.dmg`
 - 推送 `v*` 标签时自动创建 GitHub Release，并挂载 exe / dmg
-- 客户端通过最新 GitHub Release 判断是否有新版本；当前版本只提示下载，不后台替换程序
+- 客户端通过 Gitee 最新 Release 判断是否有新版本；当前版本只提示下载，不后台替换程序
 
 本地构建图标资源：
 

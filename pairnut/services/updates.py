@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 from pairnut import __version__
 
 
-LATEST_RELEASE_URL = "https://api.github.com/repos/kendev93/pairnut/releases/latest"
+LATEST_RELEASE_URL = "https://gitee.com/api/v5/repos/ck0318/pairnut/releases/latest"
 
 
 @dataclass(frozen=True, slots=True)

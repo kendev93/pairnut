@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from pairnut.services.updates import check_for_update, is_newer_version
+from pairnut.services.updates import LATEST_RELEASE_URL, check_for_update, is_newer_version
 
 
 class _Response:
@@ -21,6 +21,9 @@ class _Response:
 
 
 class UpdateTests(unittest.TestCase):
+    def test_default_update_source_uses_gitee_release_api(self) -> None:
+        self.assertEqual(LATEST_RELEASE_URL, "https://gitee.com/api/v5/repos/ck0318/pairnut/releases/latest")
+
     def test_version_comparison_accepts_release_tags(self) -> None:
         self.assertTrue(is_newer_version("v1.2.0", "1.1.9"))
         self.assertFalse(is_newer_version("v1.2.0", "1.2.0"))
