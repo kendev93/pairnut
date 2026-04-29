@@ -9,7 +9,7 @@ from pairnut.database import repositories
 from pairnut.database.connection import get_images_dir
 from pairnut.database.schema import init_database
 from pairnut.domain.models import DefectLevel, SerialMode
-from pairnut.services.images import import_walnut_images, parse_image_filename
+from pairnut.services.images import delete_walnut_image, import_walnut_images, parse_image_filename
 
 
 class ImageImportTests(unittest.TestCase):
@@ -86,4 +86,25 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(result.imported_count, 0)
         self.assertEqual(result.replaced_count, 0)
         self.assertEqual(len(result.skipped), 2)
+        self.assertEqual(repositories.list_walnut_images(self.walnut_id), [])
+
+    def test_delete_walnut_image_removes_file_and_database_record(self) -> None:
+        source = Path(self.tempdir.name) / "NJS-01-3.JPG"
+        source.write_text("image", encoding="utf-8")
+        import_walnut_images([source], self.variety_id)
+
+        self.assertTrue(delete_walnut_image(self.walnut_id, 3))
+
+        self.assertEqual(repositories.list_walnut_images(self.walnut_id), [])
+        self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "3.jpg").exists())
+
+    def test_delete_walnut_image_cleans_record_when_file_is_missing(self) -> None:
+        source = Path(self.tempdir.name) / "NJS-01-4.JPG"
+        source.write_text("image", encoding="utf-8")
+        import_walnut_images([source], self.variety_id)
+        stored_file = get_images_dir() / f"{self.walnut_id}-NJS-01" / "4.jpg"
+        stored_file.unlink()
+
+        self.assertTrue(delete_walnut_image(self.walnut_id, 4))
+
         self.assertEqual(repositories.list_walnut_images(self.walnut_id), [])

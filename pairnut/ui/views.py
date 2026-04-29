@@ -43,7 +43,7 @@ from shiboken6 import isValid
 
 from ..database import get_data_dir, get_images_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
-from ..services.images import import_walnut_images
+from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_candidates_for_variety
 from ..services.serials import next_serial_no
 from ..services.updates import UpdateInfo, check_for_update
@@ -321,8 +321,10 @@ def create_chip(text: str, background: str = "#f2e7d7", foreground: str = "#6d57
 
 
 class ImagePreviewDialog(QDialog):
-    def __init__(self, parent: QWidget | None, image_path: Path, title: str):
+    def __init__(self, parent: QWidget | None, walnut_id: int, face_no: int, image_path: Path, title: str):
         super().__init__(parent)
+        self.walnut_id = walnut_id
+        self.face_no = face_no
         self.image_path = image_path
         self.pixmap = QPixmap(str(image_path))
         self.setWindowTitle(title)
@@ -333,8 +335,20 @@ class ImagePreviewDialog(QDialog):
         self.image_label.setMinimumSize(640, 480)
         self.image_label.setStyleSheet("background: #1f1a16; border-radius: 8px;")
 
+        delete_button = QPushButton("删除图片")
+        delete_button.setProperty("variant", "danger")
+        delete_button.clicked.connect(self.delete_image)
+        close_button = QPushButton("关闭")
+        close_button.clicked.connect(self.accept)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(delete_button)
+        button_row.addStretch(1)
+        button_row.addWidget(close_button)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self.image_label, 1)
+        layout.addLayout(button_row)
         self._refresh_image()
 
     def resizeEvent(self, event) -> None:
@@ -353,17 +367,31 @@ class ImagePreviewDialog(QDialog):
             )
         )
 
+    def delete_image(self) -> None:
+        if QMessageBox.question(self, "删除图片", "确定删除这张图片吗？") != QMessageBox.Yes:
+            return
+        delete_walnut_image(self.walnut_id, self.face_no)
+        main_window = self.parent()
+        if main_window is not None and hasattr(main_window, "refresh_all"):
+            main_window.refresh_all()
+        self.accept()
+
 
 class ClickableImageLabel(QLabel):
-    def __init__(self, image_path: Path, title: str, parent: QWidget | None = None):
+    def __init__(self, walnut_id: int, face_no: int, image_path: Path, title: str, parent: QWidget | None = None):
         super().__init__(parent)
+        self.walnut_id = walnut_id
+        self.face_no = face_no
         self.image_path = image_path
         self.title = title
         self.setCursor(QCursor(Qt.PointingHandCursor))
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
-            ImagePreviewDialog(self.window(), self.image_path, self.title).exec()
+            if not self.image_path.exists():
+                QMessageBox.warning(self, "图片不存在", "这张图片文件已不存在，请重新导入。")
+                return
+            ImagePreviewDialog(self.window(), self.walnut_id, self.face_no, self.image_path, self.title).exec()
             return
         super().mousePressEvent(event)
 
@@ -379,18 +407,24 @@ def create_walnut_image_strip(walnut_id: int, thumbnail_size: int = 54) -> QWidg
     for face_no in range(1, 7):
         image = images.get(face_no)
         image_path = image_root / image["stored_path"] if image else None
-        label = ClickableImageLabel(image_path, f'第 {face_no} 面：{image["original_filename"]}') if image_path else QLabel(str(face_no))
+        if image_path and image_path.exists():
+            label = ClickableImageLabel(walnut_id, face_no, image_path, f'第 {face_no} 面：{image["original_filename"]}')
+        else:
+            label = QLabel(str(face_no))
         label.setFixedSize(thumbnail_size, thumbnail_size)
         label.setAlignment(Qt.AlignCenter)
         label.setStyleSheet(
             "background: #f6f0e8; border: 1px solid #dfcfbb; border-radius: 6px; color: #8a6d54; font-weight: 600;"
         )
-        if image and image_path:
+        if image and image_path and image_path.exists():
             pixmap = QPixmap(str(image_path))
             if not pixmap.isNull():
                 label.setPixmap(pixmap.scaled(thumbnail_size, thumbnail_size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
                 label.setStyleSheet("background: #f6f0e8; border: 1px solid #dfcfbb; border-radius: 6px;")
                 label.setToolTip(f'第 {face_no} 面：{image["original_filename"]}')
+        elif image:
+            label.setText("缺")
+            label.setToolTip(f'第 {face_no} 面文件不存在，请重新导入。')
         layout.addWidget(label)
     return widget
 

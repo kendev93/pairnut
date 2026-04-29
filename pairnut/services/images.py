@@ -83,3 +83,15 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
             result.imported_count += 1
 
     return result
+
+
+def delete_walnut_image(walnut_id: int, face_no: int) -> bool:
+    image = repositories.get_walnut_image(walnut_id, face_no)
+    if image is None:
+        return False
+
+    image_path = get_images_dir() / image["stored_path"]
+    if image_path.exists():
+        image_path.unlink()
+    repositories.delete_walnut_image(walnut_id, face_no)
+    return True

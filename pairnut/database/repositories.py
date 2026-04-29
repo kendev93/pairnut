@@ -202,6 +202,27 @@ def list_walnut_images(walnut_id: int) -> list[dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def get_walnut_image(walnut_id: int, face_no: int) -> dict[str, Any] | None:
+    with db_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM walnut_images
+            WHERE walnut_id = ? AND face_no = ?
+            """,
+            (walnut_id, face_no),
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def delete_walnut_image(walnut_id: int, face_no: int) -> None:
+    with db_connection() as conn:
+        conn.execute(
+            "DELETE FROM walnut_images WHERE walnut_id = ? AND face_no = ?",
+            (walnut_id, face_no),
+        )
+
+
 def list_locked_pairs(variety_id: int | None = None, active_only: bool = True) -> list[dict[str, Any]]:
     query = """
         SELECT lp.*,
