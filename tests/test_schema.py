@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,21 +25,32 @@ class SchemaTests(unittest.TestCase):
     def test_init_database_creates_sqlite_file(self) -> None:
         self.assertTrue(get_db_path().exists())
 
-    def test_default_data_dir_uses_user_documents(self) -> None:
+    def test_default_data_dir_uses_macos_application_support(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)
         home_dir = self.tempdir.name
-        original_home = os.environ.get("HOME")
-        os.environ["HOME"] = home_dir
-        shutil.rmtree(os.path.join(home_dir, "PairNut"), ignore_errors=True)
 
-        try:
-            self.assertEqual(get_db_path(), Path(home_dir) / "Documents" / "PairNut" / "pairnut.db")
-        finally:
-            if original_home is None:
-                os.environ.pop("HOME", None)
-            else:
-                os.environ["HOME"] = original_home
-            os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
+        with (
+            patch("pathlib.Path.home", return_value=Path(home_dir)),
+            patch.object(sys, "platform", "darwin"),
+        ):
+            self.assertEqual(
+                get_db_path(),
+                Path(home_dir) / "Library" / "Application Support" / "PairNut" / "pairnut.db",
+            )
+
+        os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
+
+    def test_default_data_dir_uses_windows_program_data(self) -> None:
+        os.environ.pop("PAIRNUT_DATA_DIR", None)
+        program_data = Path(self.tempdir.name) / "ProgramData"
+
+        with (
+            patch.dict(os.environ, {"PROGRAMDATA": str(program_data)}, clear=False),
+            patch.object(sys, "platform", "win32"),
+        ):
+            self.assertEqual(get_db_path(), program_data / "PairNut" / "pairnut.db")
+
+        os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
 
     def test_legacy_project_database_is_copied_to_user_data_dir_once(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)
@@ -50,6 +61,10 @@ class SchemaTests(unittest.TestCase):
 
         with (
             patch("pairnut.database.connection._default_user_data_dir", return_value=target_root),
+            patch(
+                "pairnut.database.connection._legacy_documents_data_dir",
+                return_value=Path(self.tempdir.name) / "missing-documents",
+            ),
             patch("pairnut.database.connection._legacy_project_data_dir", return_value=legacy_root),
         ):
             self.assertEqual(get_data_dir(), target_root)
@@ -58,6 +73,29 @@ class SchemaTests(unittest.TestCase):
             (legacy_root / "pairnut.db").write_text("changed legacy db", encoding="utf-8")
             self.assertEqual(get_data_dir(), target_root)
             self.assertEqual((target_root / "pairnut.db").read_text(encoding="utf-8"), "legacy db")
+
+        os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
+
+    def test_legacy_documents_data_is_copied_to_new_default_dir_once(self) -> None:
+        os.environ.pop("PAIRNUT_DATA_DIR", None)
+        legacy_root = Path(self.tempdir.name) / "Documents" / "PairNut"
+        target_root = Path(self.tempdir.name) / "Library" / "Application Support" / "PairNut"
+        legacy_root.mkdir(parents=True)
+        (legacy_root / "pairnut.db").write_text("documents db", encoding="utf-8")
+        (legacy_root / "images").mkdir()
+        (legacy_root / "images" / "sample.jpg").write_text("image", encoding="utf-8")
+
+        with (
+            patch("pathlib.Path.home", return_value=Path(self.tempdir.name)),
+            patch.object(sys, "platform", "darwin"),
+        ):
+            self.assertEqual(get_data_dir(), target_root)
+            self.assertEqual((target_root / "pairnut.db").read_text(encoding="utf-8"), "documents db")
+            self.assertEqual((target_root / "images" / "sample.jpg").read_text(encoding="utf-8"), "image")
+
+            (legacy_root / "pairnut.db").write_text("changed documents db", encoding="utf-8")
+            self.assertEqual(get_data_dir(), target_root)
+            self.assertEqual((target_root / "pairnut.db").read_text(encoding="utf-8"), "documents db")
 
         os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
 

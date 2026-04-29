@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -13,21 +14,44 @@ APP_DIR_NAME = "PairNut"
 
 
 def _default_user_data_dir() -> Path:
-    documents_dir = Path.home() / "Documents"
-    return documents_dir / APP_DIR_NAME
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_DIR_NAME
+    if sys.platform == "win32":
+        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / APP_DIR_NAME
+    if sys.platform.startswith("linux"):
+        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        return root / APP_DIR_NAME
+    return Path.home() / f".{APP_DIR_NAME.lower()}"
+
+
+def _legacy_documents_data_dir() -> Path:
+    return Path.home() / "Documents" / APP_DIR_NAME
 
 
 def _legacy_project_data_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "data"
 
 
-def _migrate_legacy_database(data_dir: Path) -> None:
-    """Copy an early development database out of the project tree once."""
-    legacy_db = _legacy_project_data_dir() / "pairnut.db"
-    target_db = data_dir / "pairnut.db"
-    if target_db.exists() or not legacy_db.exists():
+def _copy_missing_data_files(source_dir: Path, target_dir: Path) -> None:
+    for source_path in source_dir.rglob("*"):
+        relative_path = source_path.relative_to(source_dir)
+        target_path = target_dir / relative_path
+        if source_path.is_dir():
+            target_path.mkdir(parents=True, exist_ok=True)
+        elif not target_path.exists():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+
+
+def _migrate_legacy_data(data_dir: Path) -> None:
+    """Copy data from earlier default locations once."""
+    if (data_dir / "pairnut.db").exists():
         return
-    shutil.copy2(legacy_db, target_db)
+    for legacy_dir in (_legacy_documents_data_dir(), _legacy_project_data_dir()):
+        if legacy_dir.resolve() == data_dir.resolve() or not (legacy_dir / "pairnut.db").exists():
+            continue
+        _copy_missing_data_files(legacy_dir, data_dir)
+        return
 
 
 def get_data_dir() -> Path:
@@ -39,7 +63,7 @@ def get_data_dir() -> Path:
         data_dir = _default_user_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     if not override:
-        _migrate_legacy_database(data_dir)
+        _migrate_legacy_data(data_dir)
     return data_dir
 
 

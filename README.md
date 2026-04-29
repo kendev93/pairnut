@@ -12,7 +12,7 @@
 当前版本聚焦本地桌面使用场景：
 - PySide6 桌面界面
 - Python 业务逻辑
-- SQLite 本地存储，默认数据目录为 `~/Documents/PairNut`
+- SQLite 本地存储，按系统使用稳定的数据目录
 - 按品种管理核桃与配对规则
 - 基于边 / 肚 / 高偏差、克重接近度、瑕疵扣分的候选配对
 - 启动后自动检查 Gitee Release 新版本，并引导用户下载更新
@@ -28,13 +28,17 @@ python3 main.py
 
 ## 数据目录
 
-PairNut 的业务数据不放在软件安装目录或源码目录中。默认数据仓库为：
+PairNut 的业务数据不放在软件安装目录或源码目录中。默认数据仓库按系统区分：
 
 ```text
-~/Documents/PairNut/
+macOS:   ~/Library/Application Support/PairNut/
+Windows: C:\ProgramData\PairNut\
+Linux:   $XDG_DATA_HOME/PairNut/ 或 ~/.local/share/PairNut/
 ```
 
-其中 `pairnut.db` 保存核桃、品种和配对记录；后续导入图片会放在该目录下的 `images/`。升级或重装软件时，不要删除这个数据目录。开发和测试可通过 `PAIRNUT_DATA_DIR` 指向临时目录。
+其中 `pairnut.db` 保存核桃、品种和配对记录；后续导入图片会放在该目录下的 `images/`。升级或重装软件时，不要删除这个数据目录。
+
+如果旧版本已经在 `~/Documents/PairNut/` 或项目内 `data/` 目录生成过数据，新版本首次启动会在新默认目录没有数据库时自动复制过去一次。开发和测试可通过 `PAIRNUT_DATA_DIR` 指向临时目录。
 
 ## 打包
 
