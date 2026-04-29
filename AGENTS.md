@@ -30,7 +30,7 @@ PairNut 是一款面向文玩核桃商家的本地桌面配对工具。
 - 核心包：`pairnut/`。
 - 测试：`tests/`，测试代码基于 `unittest`，通常用 `pytest` 运行。
 
-默认数据库跟随平台数据目录：macOS 为 `~/Library/Application Support/PairNut/pairnut.db`，Windows 为 `C:\ProgramData\PairNut\pairnut.db`，Linux 为 `$XDG_DATA_HOME/PairNut/pairnut.db` 或 `~/.local/share/PairNut/pairnut.db`。测试必须通过 `PAIRNUT_DATA_DIR` 指向临时目录，避免碰真实用户数据。
+开发环境默认数据库位置是 `data/pairnut.db`。打包后数据库跟随平台数据目录：macOS 为 `~/Library/Application Support/PairNut/pairnut.db`，Windows 为 `C:\ProgramData\PairNut\pairnut.db`，Linux 为 `$XDG_DATA_HOME/PairNut/pairnut.db` 或 `~/.local/share/PairNut/pairnut.db`。测试必须通过 `PAIRNUT_DATA_DIR` 指向临时目录，避免碰真实用户数据。
 
 ## 常用命令
 

@@ -25,13 +25,22 @@ class SchemaTests(unittest.TestCase):
     def test_init_database_creates_sqlite_file(self) -> None:
         self.assertTrue(get_db_path().exists())
 
-    def test_default_data_dir_uses_macos_application_support(self) -> None:
+    def test_development_data_dir_uses_project_data_directory(self) -> None:
+        os.environ.pop("PAIRNUT_DATA_DIR", None)
+
+        with patch.object(sys, "frozen", False, create=True):
+            self.assertEqual(get_db_path(), Path(__file__).resolve().parents[1] / "data" / "pairnut.db")
+
+        os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
+
+    def test_packaged_data_dir_uses_macos_application_support(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)
         home_dir = self.tempdir.name
 
         with (
             patch("pathlib.Path.home", return_value=Path(home_dir)),
             patch.object(sys, "platform", "darwin"),
+            patch.object(sys, "frozen", True, create=True),
         ):
             self.assertEqual(
                 get_db_path(),
@@ -40,13 +49,14 @@ class SchemaTests(unittest.TestCase):
 
         os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
 
-    def test_default_data_dir_uses_windows_program_data(self) -> None:
+    def test_packaged_data_dir_uses_windows_program_data(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)
         program_data = Path(self.tempdir.name) / "ProgramData"
 
         with (
             patch.dict(os.environ, {"PROGRAMDATA": str(program_data)}, clear=False),
             patch.object(sys, "platform", "win32"),
+            patch.object(sys, "frozen", True, create=True),
         ):
             self.assertEqual(get_db_path(), program_data / "PairNut" / "pairnut.db")
 
@@ -60,12 +70,13 @@ class SchemaTests(unittest.TestCase):
         (legacy_root / "pairnut.db").write_text("legacy db", encoding="utf-8")
 
         with (
-            patch("pairnut.database.connection._default_user_data_dir", return_value=target_root),
+            patch("pairnut.database.connection._default_data_dir", return_value=target_root),
             patch(
                 "pairnut.database.connection._legacy_documents_data_dir",
                 return_value=Path(self.tempdir.name) / "missing-documents",
             ),
             patch("pairnut.database.connection._legacy_project_data_dir", return_value=legacy_root),
+            patch.object(sys, "frozen", True, create=True),
         ):
             self.assertEqual(get_data_dir(), target_root)
             self.assertEqual((target_root / "pairnut.db").read_text(encoding="utf-8"), "legacy db")
@@ -88,6 +99,7 @@ class SchemaTests(unittest.TestCase):
         with (
             patch("pathlib.Path.home", return_value=Path(self.tempdir.name)),
             patch.object(sys, "platform", "darwin"),
+            patch.object(sys, "frozen", True, create=True),
         ):
             self.assertEqual(get_data_dir(), target_root)
             self.assertEqual((target_root / "pairnut.db").read_text(encoding="utf-8"), "documents db")

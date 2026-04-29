@@ -13,7 +13,7 @@ from pathlib import Path
 APP_DIR_NAME = "PairNut"
 
 
-def _default_user_data_dir() -> Path:
+def _packaged_data_dir() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_DIR_NAME
     if sys.platform == "win32":
@@ -22,6 +22,16 @@ def _default_user_data_dir() -> Path:
         root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
         return root / APP_DIR_NAME
     return Path.home() / f".{APP_DIR_NAME.lower()}"
+
+
+def _development_data_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "data"
+
+
+def _default_data_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return _packaged_data_dir()
+    return _development_data_dir()
 
 
 def _legacy_documents_data_dir() -> Path:
@@ -60,9 +70,9 @@ def get_data_dir() -> Path:
     if override:
         data_dir = Path(override)
     else:
-        data_dir = _default_user_data_dir()
+        data_dir = _default_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
-    if not override:
+    if not override and getattr(sys, "frozen", False):
         _migrate_legacy_data(data_dir)
     return data_dir
 
