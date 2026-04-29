@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QAction, QCursor, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QAbstractItemView,
@@ -320,6 +320,54 @@ def create_chip(text: str, background: str = "#f2e7d7", foreground: str = "#6d57
     return chip
 
 
+class ImagePreviewDialog(QDialog):
+    def __init__(self, parent: QWidget | None, image_path: Path, title: str):
+        super().__init__(parent)
+        self.image_path = image_path
+        self.pixmap = QPixmap(str(image_path))
+        self.setWindowTitle(title)
+        self.resize(900, 700)
+
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setMinimumSize(640, 480)
+        self.image_label.setStyleSheet("background: #1f1a16; border-radius: 8px;")
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.image_label, 1)
+        self._refresh_image()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._refresh_image()
+
+    def _refresh_image(self) -> None:
+        if self.pixmap.isNull():
+            self.image_label.setText("图片无法预览")
+            return
+        self.image_label.setPixmap(
+            self.pixmap.scaled(
+                self.image_label.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+
+class ClickableImageLabel(QLabel):
+    def __init__(self, image_path: Path, title: str, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.image_path = image_path
+        self.title = title
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            ImagePreviewDialog(self.window(), self.image_path, self.title).exec()
+            return
+        super().mousePressEvent(event)
+
+
 def create_walnut_image_strip(walnut_id: int, thumbnail_size: int = 54) -> QWidget:
     widget = QWidget()
     layout = QHBoxLayout(widget)
@@ -329,15 +377,15 @@ def create_walnut_image_strip(walnut_id: int, thumbnail_size: int = 54) -> QWidg
     images = {int(image["face_no"]): image for image in repositories.list_walnut_images(walnut_id)}
     image_root = get_images_dir()
     for face_no in range(1, 7):
-        label = QLabel(str(face_no))
+        image = images.get(face_no)
+        image_path = image_root / image["stored_path"] if image else None
+        label = ClickableImageLabel(image_path, f'第 {face_no} 面：{image["original_filename"]}') if image_path else QLabel(str(face_no))
         label.setFixedSize(thumbnail_size, thumbnail_size)
         label.setAlignment(Qt.AlignCenter)
         label.setStyleSheet(
             "background: #f6f0e8; border: 1px solid #dfcfbb; border-radius: 6px; color: #8a6d54; font-weight: 600;"
         )
-        image = images.get(face_no)
-        if image:
-            image_path = image_root / image["stored_path"]
+        if image and image_path:
             pixmap = QPixmap(str(image_path))
             if not pixmap.isNull():
                 label.setPixmap(pixmap.scaled(thumbnail_size, thumbnail_size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
