@@ -1225,6 +1225,8 @@ class PairNutMainWindow(QMainWindow):
         refresh_action.triggered.connect(self.refresh_all)
         data_dir_action = QAction("显示数据目录", self)
         data_dir_action.triggered.connect(self.show_data_dir)
+        open_data_dir_action = QAction("打开数据目录", self)
+        open_data_dir_action.triggered.connect(self.open_data_dir)
         update_action = QAction("检查更新", self)
         update_action.triggered.connect(self.check_for_updates)
         quit_action = QAction("退出", self)
@@ -1233,6 +1235,7 @@ class PairNutMainWindow(QMainWindow):
         menu = self.menuBar().addMenu("文件")
         menu.addAction(refresh_action)
         menu.addAction(data_dir_action)
+        menu.addAction(open_data_dir_action)
         menu.addAction(update_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -1285,6 +1288,9 @@ class PairNutMainWindow(QMainWindow):
 
     def show_data_dir(self) -> None:
         QMessageBox.information(self, "数据目录", f"当前数据目录:\n{get_data_dir()}")
+
+    def open_data_dir(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_data_dir())))
 
     def check_for_updates_silently(self) -> None:
         self._start_update_check(silent=True)
