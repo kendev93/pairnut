@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from ..database import get_data_dir, repositories
+from ..database import get_data_dir, get_images_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
 from ..services.images import import_walnut_images
 from ..services.matching import get_candidates_for_variety
@@ -318,6 +318,33 @@ def create_chip(text: str, background: str = "#f2e7d7", foreground: str = "#6d57
         f"background: {background}; color: {foreground}; border-radius: 11px; padding: 6px 12px; font-weight: 600;"
     )
     return chip
+
+
+def create_walnut_image_strip(walnut_id: int, thumbnail_size: int = 54) -> QWidget:
+    widget = QWidget()
+    layout = QHBoxLayout(widget)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(6)
+
+    images = {int(image["face_no"]): image for image in repositories.list_walnut_images(walnut_id)}
+    image_root = get_images_dir()
+    for face_no in range(1, 7):
+        label = QLabel(str(face_no))
+        label.setFixedSize(thumbnail_size, thumbnail_size)
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet(
+            "background: #f6f0e8; border: 1px solid #dfcfbb; border-radius: 6px; color: #8a6d54; font-weight: 600;"
+        )
+        image = images.get(face_no)
+        if image:
+            image_path = image_root / image["stored_path"]
+            pixmap = QPixmap(str(image_path))
+            if not pixmap.isNull():
+                label.setPixmap(pixmap.scaled(thumbnail_size, thumbnail_size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                label.setStyleSheet("background: #f6f0e8; border: 1px solid #dfcfbb; border-radius: 6px;")
+                label.setToolTip(f'第 {face_no} 面：{image["original_filename"]}')
+        layout.addWidget(label)
+    return widget
 
 
 class UpdateCheckWorker(QObject):
@@ -837,6 +864,7 @@ class WalnutTab(VarietyScopedWidget):
         walnuts = repositories.list_walnuts(variety_id=variety_id, include_locked=True) if variety_id else []
         self.table.setRowCount(len(walnuts))
         for row, walnut in enumerate(walnuts):
+            image_count = len(repositories.list_walnut_images(int(walnut["id"])))
             values = [
                 walnut["serial_no"],
                 f'{walnut["edge_mm"]:.2f}',
@@ -844,7 +872,7 @@ class WalnutTab(VarietyScopedWidget):
                 f'{walnut["height_mm"]:.2f}',
                 f'{walnut["weight_g"]:.2f}',
                 walnut["defect_level"],
-                f'{len(repositories.list_walnut_images(int(walnut["id"])))} / 6',
+                f"{image_count} / 6",
                 "已锁定" if walnut["is_locked"] else "未锁定",
             ]
             for column, value in enumerate(values):
@@ -853,7 +881,10 @@ class WalnutTab(VarietyScopedWidget):
                 if column == 0:
                     item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
                 self.table.setItem(row, column, item)
+            self.table.setCellWidget(row, 6, create_walnut_image_strip(int(walnut["id"]), 42))
         self.table.resizeRowsToContents()
+        for row in range(self.table.rowCount()):
+            self.table.setRowHeight(row, max(self.table.rowHeight(row), 54))
         self._restore_selected_walnut()
         self._sync_action_state()
 
@@ -1044,19 +1075,24 @@ class MatchingTab(VarietyScopedWidget):
         meta_row.addWidget(create_chip("已锁定" if walnut["is_locked"] else "可参与推荐", "#f6f0e5", "#7a6554"))
         meta_row.addStretch(1)
         layout.addLayout(meta_row)
+        layout.addWidget(create_walnut_image_strip(int(walnut["id"]), 58))
 
         active_lock = repositories.get_active_lock_for_walnut(walnut["id"])
         if active_lock:
             partner_id = active_lock["walnut_id_2"] if active_lock["walnut_id_1"] == walnut["id"] else active_lock["walnut_id_1"]
             partner = repositories.get_walnut(partner_id)
             lock_card = create_candidate_card()
-            lock_layout = QHBoxLayout(lock_card)
+            lock_layout = QVBoxLayout(lock_card)
             lock_layout.setContentsMargins(16, 14, 16, 14)
-            lock_layout.addWidget(QLabel(f'已锁定配对：{partner["serial_no"]}'))
+            lock_top_row = QHBoxLayout()
+            lock_top_row.addWidget(QLabel(f'已锁定配对：{partner["serial_no"]}'))
             unlock_button = QPushButton("解除锁定")
             unlock_button.clicked.connect(lambda _=False, pair_id=active_lock["id"]: self._unlock_pair(pair_id))
-            lock_layout.addStretch(1)
-            lock_layout.addWidget(unlock_button)
+            lock_top_row.addStretch(1)
+            lock_top_row.addWidget(unlock_button)
+            lock_layout.addLayout(lock_top_row)
+            if partner:
+                lock_layout.addWidget(create_walnut_image_strip(int(partner["id"]), 58))
             layout.addWidget(lock_card)
             return group
 
@@ -1086,6 +1122,7 @@ class MatchingTab(VarietyScopedWidget):
         score_chip = create_chip(f"{candidate.total_score:.1f} 分", "#bc7b35", "white")
         top_row.addWidget(score_chip)
         card_layout.addLayout(top_row)
+        card_layout.addWidget(create_walnut_image_strip(candidate.walnut_id, 58))
 
         metrics = QHBoxLayout()
         metrics.addWidget(create_metric("边差", f"{candidate.edge_diff:.2f}"))
