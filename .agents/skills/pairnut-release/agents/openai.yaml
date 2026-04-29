@@ -1,0 +1,4 @@
+interface:
+  display_name: "PairNut Release"
+  short_description: "PairNut 发版、打 tag 和发布说明流程"
+  default_prompt: "Use $pairnut-release to prepare a PairNut release, update changelog, tag the version, and verify packaging workflow."
