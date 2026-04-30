@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from ..database import get_data_dir, get_images_dir, repositories
+from ..database import get_data_dir, get_images_dir, get_models_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
 from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_candidates_for_variety
@@ -1403,6 +1403,10 @@ class PairNutMainWindow(QMainWindow):
         data_dir_action.triggered.connect(self.show_data_dir)
         open_data_dir_action = QAction("打开数据目录", self)
         open_data_dir_action.triggered.connect(self.open_data_dir)
+        models_dir_action = QAction("显示模型目录", self)
+        models_dir_action.triggered.connect(self.show_models_dir)
+        open_models_dir_action = QAction("打开模型目录", self)
+        open_models_dir_action.triggered.connect(self.open_models_dir)
         update_action = QAction("检查更新", self)
         update_action.triggered.connect(self.check_for_updates)
         quit_action = QAction("退出", self)
@@ -1412,6 +1416,8 @@ class PairNutMainWindow(QMainWindow):
         menu.addAction(refresh_action)
         menu.addAction(data_dir_action)
         menu.addAction(open_data_dir_action)
+        menu.addAction(models_dir_action)
+        menu.addAction(open_models_dir_action)
         menu.addAction(update_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -1467,6 +1473,17 @@ class PairNutMainWindow(QMainWindow):
 
     def open_data_dir(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_data_dir())))
+
+    def show_models_dir(self) -> None:
+        QMessageBox.information(
+            self,
+            "模型目录",
+            "当前图片匹配使用 OpenCV 特征，不需要下载模型。\n\n"
+            f"后续可选 AI 或 3D 模型文件目录:\n{get_models_dir()}",
+        )
+
+    def open_models_dir(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_models_dir())))
 
     def check_for_updates_silently(self) -> None:
         self._start_update_check(silent=True)
