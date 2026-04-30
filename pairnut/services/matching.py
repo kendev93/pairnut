@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..database import repositories
 from ..domain.models import CandidateMatch
+from .image_features import walnut_image_similarity
 from .scoring import build_score, within_tolerance
 
 
@@ -26,6 +27,7 @@ def get_candidates_for_walnut(walnut_id: int, limit: int = 3) -> list[CandidateM
         if not within_tolerance(walnut, other, tolerance_mm):
             continue
         score = build_score(walnut, other, tolerance_mm)
+        image_similarity = walnut_image_similarity(walnut_id, int(other["id"]))
         candidates.append(
             CandidateMatch(
                 walnut_id=other["id"],
@@ -39,6 +41,10 @@ def get_candidates_for_walnut(walnut_id: int, limit: int = 3) -> list[CandidateM
                 height_diff=score["height_diff"],
                 weight_diff=score["weight_diff"],
                 defect_level=other["defect_level"],
+                image_similarity=image_similarity.score if image_similarity else None,
+                image_matched_faces=image_similarity.matched_faces if image_similarity else 0,
+                image_base_faces=image_similarity.base_faces if image_similarity else 0,
+                image_candidate_faces=image_similarity.candidate_faces if image_similarity else 0,
             )
         )
 

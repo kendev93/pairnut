@@ -8,6 +8,7 @@ import re
 import shutil
 
 from ..database import get_images_dir, repositories
+from .image_features import store_opencv_features
 
 
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic"}
@@ -25,6 +26,7 @@ class BatchImageImportResult:
     imported_count: int = 0
     replaced_count: int = 0
     skipped: list[str] = field(default_factory=list)
+    feature_failed: list[str] = field(default_factory=list)
 
 
 def parse_image_filename(path: str | Path) -> ParsedImageName | None:
@@ -68,12 +70,16 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
         existing_images = repositories.list_walnut_images(walnut_id)
         existing_image = next((image for image in existing_images if int(image["face_no"]) == parsed.face_no), None)
         shutil.copy2(source, target)
-        repositories.upsert_walnut_image(
+        image_id = repositories.upsert_walnut_image(
             walnut_id,
             parsed.face_no,
             source.name,
             relative_path.as_posix(),
         )
+        try:
+            store_opencv_features(image_id, target)
+        except Exception as exc:
+            result.feature_failed.append(f"{source.name}: {exc}")
         if existing_image:
             old_path = images_root / existing_image["stored_path"]
             if old_path != target and old_path.exists():

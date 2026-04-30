@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pairnut.database import repositories
 from pairnut.database.connection import get_images_dir
@@ -47,11 +48,13 @@ class ImageImportTests(unittest.TestCase):
         source = Path(self.tempdir.name) / "NJS-01-1.JPG"
         source.write_text("image", encoding="utf-8")
 
-        result = import_walnut_images([source], self.variety_id)
+        with patch("pairnut.services.images.store_opencv_features") as store_features:
+            result = import_walnut_images([source], self.variety_id)
 
         self.assertEqual(result.imported_count, 1)
         self.assertEqual(result.replaced_count, 0)
         self.assertEqual(result.skipped, [])
+        self.assertEqual(result.feature_failed, [])
 
         images = repositories.list_walnut_images(self.walnut_id)
         self.assertEqual(len(images), 1)
@@ -59,6 +62,7 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(images[0]["original_filename"], "NJS-01-1.JPG")
         self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/1.jpg")
         self.assertEqual((get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(encoding="utf-8"), "image")
+        store_features.assert_called_once()
 
     def test_import_walnut_images_replaces_existing_face(self) -> None:
         first = Path(self.tempdir.name) / "NJS-01-2.JPG"

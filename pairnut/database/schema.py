@@ -77,6 +77,18 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS walnut_image_features (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_id INTEGER NOT NULL UNIQUE,
+        feature_version TEXT NOT NULL,
+        color_histogram TEXT NOT NULL,
+        texture_vector TEXT NOT NULL,
+        shape_vector TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (image_id) REFERENCES walnut_images(id) ON DELETE CASCADE
+    )
+    """,
+    """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pair_blacklist_pair
     ON pair_blacklist (walnut_id_1, walnut_id_2)
     """,

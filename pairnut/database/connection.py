@@ -56,6 +56,13 @@ def get_images_dir() -> Path:
     return images_dir
 
 
+def get_models_dir() -> Path:
+    """Return the root directory for optional user-downloaded models."""
+    models_dir = get_data_dir() / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    return models_dir
+
+
 @contextmanager
 def db_connection():
     """Yield a SQLite connection with row access and FK support."""

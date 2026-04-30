@@ -1060,6 +1060,10 @@ class WalnutTab(VarietyScopedWidget):
             message += "\n\n未导入：\n" + "\n".join(result.skipped[:12])
             if len(result.skipped) > 12:
                 message += f"\n... 还有 {len(result.skipped) - 12} 条"
+        if result.feature_failed:
+            message += "\n\n特征提取失败：\n" + "\n".join(result.feature_failed[:8])
+            if len(result.feature_failed) > 8:
+                message += f"\n... 还有 {len(result.feature_failed) - 8} 条"
         QMessageBox.information(self, "图片导入完成", message)
         self.window.refresh_all()
 
@@ -1218,6 +1222,16 @@ class MatchingTab(VarietyScopedWidget):
         tags.addWidget(create_chip(f'瑕疵 {candidate.defect_level}', "#efe4d4", "#6d5746"))
         tags.addWidget(create_chip(f'尺寸分 {candidate.dimension_score:.1f}', "#ecf1e8", "#4b6847"))
         tags.addWidget(create_chip(f'克重加分 {candidate.weight_bonus:.1f}', "#eef2f8", "#4f6480"))
+        if candidate.image_similarity is not None:
+            tags.addWidget(
+                create_chip(
+                    f"图片 {candidate.image_similarity:.1f} · {candidate.image_matched_faces}/6 面",
+                    "#f1e8ee",
+                    "#75506b",
+                )
+            )
+        else:
+            tags.addWidget(create_chip("图片未评分", "#f3eee8", "#8a6d54"))
         tags.addStretch(1)
         card_layout.addLayout(tags)
 

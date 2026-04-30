@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from pairnut.database.connection import get_db_path, get_images_dir
+from pairnut.database.connection import get_db_path, get_images_dir, get_models_dir
 from pairnut.database.schema import init_database
 from pairnut.database import repositories
 
@@ -65,6 +65,10 @@ class SchemaTests(unittest.TestCase):
     def test_images_dir_lives_under_data_dir(self) -> None:
         self.assertEqual(get_images_dir(), Path(self.tempdir.name) / "images")
         self.assertTrue(get_images_dir().exists())
+
+    def test_models_dir_lives_under_data_dir(self) -> None:
+        self.assertEqual(get_models_dir(), Path(self.tempdir.name) / "models")
+        self.assertTrue(get_models_dir().exists())
 
     def test_variety_unique_constraints(self) -> None:
         repositories.create_variety("狮子头", "SZT", 1.0)

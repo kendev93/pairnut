@@ -188,6 +188,35 @@ def upsert_walnut_image(walnut_id: int, face_no: int, original_filename: str, st
         return int(row["id"])
 
 
+def upsert_walnut_image_feature(
+    image_id: int,
+    feature_version: str,
+    color_histogram: str,
+    texture_vector: str,
+    shape_vector: str,
+) -> int:
+    timestamp = now_str()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO walnut_image_features (
+                image_id, feature_version, color_histogram, texture_vector, shape_vector, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(image_id) DO UPDATE SET
+                feature_version = excluded.feature_version,
+                color_histogram = excluded.color_histogram,
+                texture_vector = excluded.texture_vector,
+                shape_vector = excluded.shape_vector,
+                created_at = excluded.created_at
+            """,
+            (image_id, feature_version, color_histogram, texture_vector, shape_vector, timestamp),
+        )
+        row = cursor.execute("SELECT id FROM walnut_image_features WHERE image_id = ?", (image_id,)).fetchone()
+        return int(row["id"])
+
+
 def list_walnut_images(walnut_id: int) -> list[dict[str, Any]]:
     with db_connection() as conn:
         rows = conn.execute(
@@ -198,6 +227,26 @@ def list_walnut_images(walnut_id: int) -> list[dict[str, Any]]:
             ORDER BY face_no
             """,
             (walnut_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def list_walnut_image_features(walnut_id: int, feature_version: str | None = None) -> list[dict[str, Any]]:
+    params: list[Any] = [walnut_id]
+    version_clause = ""
+    if feature_version is not None:
+        version_clause = " AND wif.feature_version = ?"
+        params.append(feature_version)
+    with db_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT wi.walnut_id, wi.face_no, wi.stored_path, wif.*
+            FROM walnut_images wi
+            JOIN walnut_image_features wif ON wif.image_id = wi.id
+            WHERE wi.walnut_id = ?{version_clause}
+            ORDER BY wi.face_no
+            """,
+            params,
         ).fetchall()
         return [dict(row) for row in rows]
 

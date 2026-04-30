@@ -31,3 +31,7 @@ class CandidateMatch:
     height_diff: float
     weight_diff: float
     defect_level: str
+    image_similarity: float | None = None
+    image_matched_faces: int = 0
+    image_base_faces: int = 0
+    image_candidate_faces: int = 0
