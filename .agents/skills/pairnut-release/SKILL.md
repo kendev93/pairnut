@@ -46,6 +46,7 @@ Use this skill to prepare and publish PairNut desktop releases without losing th
    ```
 
    Then add a product-focused `## vX.Y.Z` section near the top of `CHANGELOG.md`. Summarize user-visible behavior from commits and diffs, not only commit messages. Mention implementation-only changes only when they affect release behavior, packaging, data safety, or user operations.
+   If a release changes matching evidence sources, scoring weights, images, features, models, or 3D-model import direction, describe it using the PairNut architecture principle: input is open, evidence is optional, scoring combines available sources dynamically, and no scanner/model provider is required.
 
 3. If version files do not match the target release, update:
    - `pyproject.toml`: `version = "X.Y.Z"`

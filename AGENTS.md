@@ -32,6 +32,18 @@ PairNut 是一款面向文玩核桃商家的本地桌面配对工具。
 
 开发环境默认数据库位置是 `data/pairnut.db`。打包后数据库跟随平台数据目录：macOS 为 `~/Library/Application Support/PairNut/pairnut.db`，Windows 为 `C:\ProgramData\PairNut\pairnut.db`，Linux 为 `$XDG_DATA_HOME/PairNut/pairnut.db` 或 `~/.local/share/PairNut/pairnut.db`。测试必须通过 `PAIRNUT_DATA_DIR` 指向临时目录，避免碰真实用户数据。
 
+## 配对架构原则
+
+PairNut 的长期方向是通用本地配对引擎，而不是绑定某一种采集方式。
+
+- 输入开放：手动边/肚/高、克重、瑕疵、六面图、3D 模型、未来扫描仪导出的数据都应作为可选证据源。
+- 证据可选：用户只录入尺寸、只导入图片、只导入 3D 模型，或混合录入，都应该能生成候选配对。
+- 动态评分：匹配逻辑按当前可用证据计算分数并归一化权重；缺失的证据不阻断配对。
+- 资产独立：图片、图片特征、未来 3D 模型和 3D 特征分别持久化，避免把某种采集方式写死进 `walnuts` 主表。
+- 本地优先：用户数据、图片、特征值和可选模型文件都应保存在数据目录下，避免依赖云端或软件安装目录。
+
+后续如果加入 3D 模型，优先新增类似 `walnut_3d_models` 和 `walnut_3d_features` 的独立表；不要重构掉当前 `walnut_images` 和 `walnut_image_features`，除非有明确迁移方案和测试。
+
 ## 常用命令
 
 本环境可能没有 `python` 命令，统一使用 `python3`。
