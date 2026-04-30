@@ -1060,10 +1060,6 @@ class WalnutTab(VarietyScopedWidget):
             message += "\n\n未导入：\n" + "\n".join(result.skipped[:12])
             if len(result.skipped) > 12:
                 message += f"\n... 还有 {len(result.skipped) - 12} 条"
-        if result.feature_failed:
-            message += "\n\n特征提取失败：\n" + "\n".join(result.feature_failed[:8])
-            if len(result.feature_failed) > 8:
-                message += f"\n... 还有 {len(result.feature_failed) - 8} 条"
         QMessageBox.information(self, "图片导入完成", message)
         self.window.refresh_all()
 

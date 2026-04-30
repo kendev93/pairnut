@@ -37,11 +37,8 @@ def _normalize(values) -> list[float]:
 
 
 def extract_opencv_features(image_path: Path) -> ImageFeatures:
-    try:
-        import cv2
-        import numpy as np
-    except ImportError as exc:
-        raise RuntimeError("OpenCV 未安装，无法提取图片特征。") from exc
+    import cv2
+    import numpy as np
 
     image = cv2.imread(str(image_path))
     if image is None:

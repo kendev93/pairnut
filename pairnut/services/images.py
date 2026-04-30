@@ -26,7 +26,6 @@ class BatchImageImportResult:
     imported_count: int = 0
     replaced_count: int = 0
     skipped: list[str] = field(default_factory=list)
-    feature_failed: list[str] = field(default_factory=list)
 
 
 def parse_image_filename(path: str | Path) -> ParsedImageName | None:
@@ -76,10 +75,7 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
             source.name,
             relative_path.as_posix(),
         )
-        try:
-            store_opencv_features(image_id, target)
-        except Exception as exc:
-            result.feature_failed.append(f"{source.name}: {exc}")
+        store_opencv_features(image_id, target)
         if existing_image:
             old_path = images_root / existing_image["stored_path"]
             if old_path != target and old_path.exists():
