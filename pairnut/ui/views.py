@@ -45,6 +45,7 @@ from ..database import get_data_dir, get_images_dir, get_models_dir, repositorie
 from ..domain.models import DefectLevel, SerialMode
 from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_candidates_for_variety
+from ..services.model_registry import get_active_model_id, is_model_downloaded, list_feature_models, set_active_model
 from ..services.serials import next_serial_no
 from ..services.updates import UpdateInfo, check_for_update
 
@@ -689,6 +690,78 @@ class WalnutDialog(QDialog):
             defect_level=self.defect_combo.currentData(),
             notes=self.notes_edit.toPlainText().strip() or None,
         )
+
+
+class ModelManagerDialog(QDialog):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("模型管理")
+        self.resize(760, 420)
+
+        title = QLabel("特征模型")
+        title.setProperty("role", "headline")
+        subtitle = QLabel("当前图片匹配默认使用 OpenCV 基础特征；未来可选 AI 模型下载后会出现在这里。")
+        subtitle.setWordWrap(True)
+        subtitle.setProperty("role", "subtle")
+
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["状态", "名称", "类型", "版本", "说明"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+
+        self.use_button = QPushButton("设为当前模型")
+        self.use_button.setProperty("variant", "primary")
+        self.use_button.clicked.connect(self.set_selected_model_active)
+        open_dir_button = QPushButton("打开模型目录")
+        open_dir_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_models_dir()))))
+        close_button = QPushButton("关闭")
+        close_button.clicked.connect(self.accept)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.use_button)
+        button_row.addWidget(open_dir_button)
+        button_row.addStretch(1)
+        button_row.addWidget(close_button)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addWidget(self.table, 1)
+        layout.addLayout(button_row)
+        self.refresh()
+
+    def refresh(self) -> None:
+        active_model_id = get_active_model_id()
+        models = list_feature_models()
+        self.table.setRowCount(len(models))
+        for row, model in enumerate(models):
+            status = "当前" if model.model_id == active_model_id else ("已下载" if is_model_downloaded(model) else "未下载")
+            values = [status, model.name, model.input_type, model.feature_version, model.description]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignVCenter | (Qt.AlignLeft if column == 4 else Qt.AlignCenter))
+                self.table.setItem(row, column, item)
+            self.table.setRowHeight(row, 48)
+        if self.table.rowCount():
+            self.table.selectRow(0)
+
+    def set_selected_model_active(self) -> None:
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        model = list_feature_models()[row]
+        if not is_model_downloaded(model):
+            QMessageBox.warning(self, "模型未下载", "请先下载模型文件并放入模型目录。")
+            return
+        set_active_model(model.model_id)
+        self.refresh()
 
 
 class VarietyTab(QWidget):
@@ -1407,6 +1480,8 @@ class PairNutMainWindow(QMainWindow):
         models_dir_action.triggered.connect(self.show_models_dir)
         open_models_dir_action = QAction("打开模型目录", self)
         open_models_dir_action.triggered.connect(self.open_models_dir)
+        model_manager_action = QAction("模型管理", self)
+        model_manager_action.triggered.connect(self.open_model_manager)
         update_action = QAction("检查更新", self)
         update_action.triggered.connect(self.check_for_updates)
         quit_action = QAction("退出", self)
@@ -1418,6 +1493,7 @@ class PairNutMainWindow(QMainWindow):
         menu.addAction(open_data_dir_action)
         menu.addAction(models_dir_action)
         menu.addAction(open_models_dir_action)
+        menu.addAction(model_manager_action)
         menu.addAction(update_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -1484,6 +1560,9 @@ class PairNutMainWindow(QMainWindow):
 
     def open_models_dir(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_models_dir())))
+
+    def open_model_manager(self) -> None:
+        ModelManagerDialog(self).exec()
 
     def check_for_updates_silently(self) -> None:
         self._start_update_check(silent=True)
