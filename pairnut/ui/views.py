@@ -45,7 +45,15 @@ from ..database import get_data_dir, get_images_dir, get_models_dir, repositorie
 from ..domain.models import DefectLevel, SerialMode
 from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_candidates_for_variety
-from ..services.model_registry import get_active_model_id, is_model_downloaded, list_feature_models, set_active_model
+from ..services.model_registry import (
+    can_download_model,
+    delete_model,
+    download_model,
+    get_active_model_id,
+    is_model_downloaded,
+    list_feature_models,
+    set_active_model,
+)
 from ..services.serials import next_serial_no
 from ..services.updates import UpdateInfo, check_for_update
 
@@ -700,7 +708,7 @@ class ModelManagerDialog(QDialog):
 
         title = QLabel("特征模型")
         title.setProperty("role", "headline")
-        subtitle = QLabel("当前图片匹配默认使用 OpenCV 基础特征；未来可选 AI 模型下载后会出现在这里。")
+        subtitle = QLabel("当前图片匹配默认使用 OpenCV 基础特征；可选 AI 模型发布后可在这里下载、删除和启用。")
         subtitle.setWordWrap(True)
         subtitle.setProperty("role", "subtle")
 
@@ -719,6 +727,10 @@ class ModelManagerDialog(QDialog):
         self.use_button = QPushButton("设为当前模型")
         self.use_button.setProperty("variant", "primary")
         self.use_button.clicked.connect(self.set_selected_model_active)
+        self.download_button = QPushButton("下载模型")
+        self.download_button.clicked.connect(self.download_selected_model)
+        self.delete_button = QPushButton("删除模型")
+        self.delete_button.clicked.connect(self.delete_selected_model)
         open_dir_button = QPushButton("打开模型目录")
         open_dir_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_models_dir()))))
         close_button = QPushButton("关闭")
@@ -726,6 +738,8 @@ class ModelManagerDialog(QDialog):
 
         button_row = QHBoxLayout()
         button_row.addWidget(self.use_button)
+        button_row.addWidget(self.download_button)
+        button_row.addWidget(self.delete_button)
         button_row.addWidget(open_dir_button)
         button_row.addStretch(1)
         button_row.addWidget(close_button)
@@ -737,12 +751,26 @@ class ModelManagerDialog(QDialog):
         layout.addLayout(button_row)
         self.refresh()
 
+    def selected_model(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        models = list_feature_models()
+        if row >= len(models):
+            return None
+        return models[row]
+
     def refresh(self) -> None:
         active_model_id = get_active_model_id()
         models = list_feature_models()
         self.table.setRowCount(len(models))
         for row, model in enumerate(models):
-            status = "当前" if model.model_id == active_model_id else ("已下载" if is_model_downloaded(model) else "未下载")
+            if model.model_id == active_model_id:
+                status = "当前"
+            elif model.is_builtin:
+                status = "内置"
+            else:
+                status = "已下载" if is_model_downloaded(model) else "未下载"
             values = [status, model.name, model.input_type, model.feature_version, model.description]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -753,14 +781,55 @@ class ModelManagerDialog(QDialog):
             self.table.selectRow(0)
 
     def set_selected_model_active(self) -> None:
-        row = self.table.currentRow()
-        if row < 0:
+        model = self.selected_model()
+        if model is None:
             return
-        model = list_feature_models()[row]
         if not is_model_downloaded(model):
-            QMessageBox.warning(self, "模型未下载", "请先下载模型文件并放入模型目录。")
+            QMessageBox.warning(self, "模型未下载", "请先下载模型，或把模型文件放入模型目录。")
             return
         set_active_model(model.model_id)
+        self.refresh()
+
+    def download_selected_model(self) -> None:
+        model = self.selected_model()
+        if model is None:
+            return
+        if model.is_builtin:
+            QMessageBox.information(self, "无需下载", "OpenCV 基础特征是内置方案，不需要下载模型文件。")
+            return
+        if not can_download_model(model):
+            QMessageBox.information(self, "暂未发布", "这个可选模型还没有配置下载地址，发布后会在这里直接下载。")
+            return
+        try:
+            path = download_model(model.model_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "下载失败", f"模型下载失败:\n{exc}")
+            return
+        QMessageBox.information(self, "下载完成", f"模型已保存到:\n{path}")
+        self.refresh()
+
+    def delete_selected_model(self) -> None:
+        model = self.selected_model()
+        if model is None:
+            return
+        if model.is_builtin:
+            QMessageBox.information(self, "不能删除", "OpenCV 基础特征是内置方案，不能删除。")
+            return
+        if not is_model_downloaded(model):
+            QMessageBox.information(self, "未下载", "这个模型当前没有本地文件。")
+            return
+        response = QMessageBox.question(
+            self,
+            "删除模型",
+            f"确定删除模型文件“{model.name}”吗？\n删除后可重新下载或放回模型目录。",
+        )
+        if response != QMessageBox.Yes:
+            return
+        try:
+            delete_model(model.model_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "删除失败", f"模型删除失败:\n{exc}")
+            return
         self.refresh()
 
 
