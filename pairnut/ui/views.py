@@ -704,7 +704,7 @@ class ModelManagerDialog(QDialog):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle("模型管理")
-        self.resize(760, 420)
+        self.resize(1040, 460)
 
         title = QLabel("特征模型")
         title.setProperty("role", "headline")
@@ -712,8 +712,8 @@ class ModelManagerDialog(QDialog):
         subtitle.setWordWrap(True)
         subtitle.setProperty("role", "subtle")
 
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["状态", "名称", "类型", "版本", "说明"])
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels(["状态", "名称", "大小", "资源", "效果", "类型", "版本", "说明"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -722,7 +722,10 @@ class ModelManagerDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Stretch)
 
         self.use_button = QPushButton("设为当前模型")
         self.use_button.setProperty("variant", "primary")
@@ -771,10 +774,19 @@ class ModelManagerDialog(QDialog):
                 status = "内置"
             else:
                 status = "已下载" if is_model_downloaded(model) else "未下载"
-            values = [status, model.name, model.input_type, model.feature_version, model.description]
+            values = [
+                status,
+                model.name,
+                model.size_label,
+                model.resource_label,
+                model.effect_label,
+                model.input_type,
+                model.feature_version,
+                model.description,
+            ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                item.setTextAlignment(Qt.AlignVCenter | (Qt.AlignLeft if column == 4 else Qt.AlignCenter))
+                item.setTextAlignment(Qt.AlignVCenter | (Qt.AlignLeft if column in (4, 7) else Qt.AlignCenter))
                 self.table.setItem(row, column, item)
             self.table.setRowHeight(row, 48)
         if self.table.rowCount():

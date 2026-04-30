@@ -23,6 +23,9 @@ class FeatureModel:
     input_type: str
     feature_version: str
     description: str
+    size_label: str
+    resource_label: str
+    effect_label: str
     filename: str | None = None
     download_url: str | None = None
     sha256: str | None = None
@@ -38,6 +41,9 @@ BUILTIN_OPENCV_MODEL = FeatureModel(
     input_type="image",
     feature_version=OPENCV_FEATURE_VERSION,
     description="默认图片匹配方案，提取颜色、纹理和形状特征，不需要下载模型。",
+    size_label="无需下载",
+    resource_label="低",
+    effect_label="基础匹配",
 )
 
 OPTIONAL_MOBILENET_MODEL = FeatureModel(
@@ -46,6 +52,9 @@ OPTIONAL_MOBILENET_MODEL = FeatureModel(
     input_type="image",
     feature_version="mobilenetv3-small-v1",
     description="可选 AI 图片特征模型。模型发布后可下载到 models/ 目录并启用。",
+    size_label="约 15-30 MB",
+    resource_label="中",
+    effect_label="预计提升纹理和局部相似度判断",
     filename="mobilenetv3-small-image-v1.onnx",
 )
 

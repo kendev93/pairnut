@@ -34,6 +34,8 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual(get_active_model_id(), BUILTIN_OPENCV_MODEL.model_id)
         self.assertEqual(get_active_model(), BUILTIN_OPENCV_MODEL)
         self.assertTrue(is_model_downloaded(BUILTIN_OPENCV_MODEL))
+        self.assertEqual(BUILTIN_OPENCV_MODEL.size_label, "无需下载")
+        self.assertEqual(BUILTIN_OPENCV_MODEL.resource_label, "低")
 
     def test_model_catalog_contains_builtin_opencv_model(self) -> None:
         self.assertIn(BUILTIN_OPENCV_MODEL, list_feature_models())
@@ -54,6 +56,9 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertFalse(is_model_downloaded(OPTIONAL_MOBILENET_MODEL))
         self.assertFalse(can_download_model(OPTIONAL_MOBILENET_MODEL))
         self.assertEqual(model_path(OPTIONAL_MOBILENET_MODEL), get_models_dir() / OPTIONAL_MOBILENET_MODEL.filename)
+        self.assertEqual(OPTIONAL_MOBILENET_MODEL.size_label, "约 15-30 MB")
+        self.assertEqual(OPTIONAL_MOBILENET_MODEL.resource_label, "中")
+        self.assertIn("提升", OPTIONAL_MOBILENET_MODEL.effect_label)
 
     def test_optional_model_cannot_be_activated_before_download(self) -> None:
         with self.assertRaises(ValueError):
