@@ -1,6 +1,6 @@
 [project]
 name = "pairnut"
-version = "1.1.2"
+version = "1.1.3"
 description = "Local desktop walnut matching tool for merchants."
 readme = "README.md"
 requires-python = ">=3.13"
