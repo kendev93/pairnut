@@ -7,6 +7,7 @@ import unittest
 from pairnut.database import repositories
 from pairnut.database.schema import init_database
 from pairnut.services.matching import get_candidates_for_variety, get_candidates_for_walnut
+from pairnut.services.mesh_features import MESH_FEATURE_VERSION
 
 
 class MatchingTests(unittest.TestCase):
@@ -103,3 +104,22 @@ class MatchingTests(unittest.TestCase):
         result = get_candidates_for_walnut(self.w1)
         candidate_ids = [item.walnut_id for item in result]
         self.assertNotIn(self.w2, candidate_ids)
+
+    def test_candidates_include_mesh_similarity_when_available(self) -> None:
+        mesh_id_1 = repositories.upsert_walnut_mesh(self.w1, "w1.obj", "w1/source.obj")
+        mesh_id_2 = repositories.upsert_walnut_mesh(self.w2, "w2.obj", "w2/source.obj")
+        for mesh_id in (mesh_id_1, mesh_id_2):
+            repositories.upsert_walnut_mesh_feature(
+                mesh_id=mesh_id,
+                feature_version=MESH_FEATURE_VERSION,
+                dimensions_vector="[1,1,1]",
+                shape_vector="[1,1,1,0.5,0.8,0.1,1,1]",
+            )
+
+        result = get_candidates_for_walnut(self.w1)
+        candidate = next(item for item in result if item.walnut_id == self.w2)
+
+        self.assertIsNotNone(candidate.mesh_similarity)
+        assert candidate.mesh_similarity is not None
+        self.assertGreater(candidate.mesh_similarity, 99.0)
+        self.assertGreater(candidate.total_score, candidate.dimension_score)

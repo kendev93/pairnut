@@ -63,6 +63,13 @@ def get_models_dir() -> Path:
     return models_dir
 
 
+def get_meshes_dir() -> Path:
+    """Return the root directory for imported walnut 3D meshes."""
+    meshes_dir = get_data_dir() / "meshes"
+    meshes_dir.mkdir(parents=True, exist_ok=True)
+    return meshes_dir
+
+
 @contextmanager
 def db_connection():
     """Yield a SQLite connection with row access and FK support."""

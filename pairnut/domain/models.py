@@ -35,3 +35,4 @@ class CandidateMatch:
     image_matched_faces: int = 0
     image_base_faces: int = 0
     image_candidate_faces: int = 0
+    mesh_similarity: float | None = None

@@ -45,6 +45,7 @@ from ..database import get_data_dir, get_images_dir, get_models_dir, repositorie
 from ..domain.models import DefectLevel, SerialMode
 from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_candidates_for_variety
+from ..services.mesh_features import import_walnut_mesh
 from ..services.model_registry import (
     can_download_model,
     delete_model,
@@ -1031,8 +1032,8 @@ class VarietyScopedWidget(QWidget):
 class WalnutTab(VarietyScopedWidget):
     def __init__(self, window: "PairNutMainWindow"):
         super().__init__(window)
-        self.table = QTableWidget(0, 8)
-        self.table.setHorizontalHeaderLabels(["编号", "边", "肚", "高", "克重", "瑕疵", "图片", "状态"])
+        self.table = QTableWidget(0, 9)
+        self.table.setHorizontalHeaderLabels(["编号", "边", "肚", "高", "克重", "瑕疵", "图片", "3D", "状态"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -1046,6 +1047,7 @@ class WalnutTab(VarietyScopedWidget):
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(8, QHeaderView.Stretch)
         self.table.itemSelectionChanged.connect(self._sync_action_state)
 
         hero = create_card()
@@ -1055,7 +1057,7 @@ class WalnutTab(VarietyScopedWidget):
         eyebrow.setProperty("role", "eyebrow")
         title = QLabel("录入与维护核桃数据")
         title.setProperty("role", "headline")
-        subtitle = QLabel("按品种录入核桃基础数据；六面图可按 核桃编号-序号 批量导入，如：NJS-0001-1。")
+        subtitle = QLabel("按品种录入核桃基础数据；六面图和 3D 模型都可作为可选配对证据。")
         subtitle.setProperty("role", "subtle")
         toolbar = QHBoxLayout()
         toolbar.addWidget(QLabel("当前品种"))
@@ -1068,6 +1070,8 @@ class WalnutTab(VarietyScopedWidget):
         self.edit_button.clicked.connect(self.edit_selected_walnut)
         self.import_images_button = QPushButton("批量导入图片")
         self.import_images_button.clicked.connect(self.import_images)
+        self.import_mesh_button = QPushButton("导入3D模型")
+        self.import_mesh_button.clicked.connect(self.import_mesh)
         self.naming_help_button = QPushButton("命名规则")
         self.naming_help_button.clicked.connect(self.show_image_naming_help)
         self.delete_button = QPushButton("删除选中")
@@ -1076,6 +1080,7 @@ class WalnutTab(VarietyScopedWidget):
         toolbar.addWidget(self.add_button)
         toolbar.addWidget(self.edit_button)
         toolbar.addWidget(self.import_images_button)
+        toolbar.addWidget(self.import_mesh_button)
         toolbar.addWidget(self.naming_help_button)
         toolbar.addWidget(self.delete_button)
         hero_layout.addWidget(eyebrow)
@@ -1101,6 +1106,7 @@ class WalnutTab(VarietyScopedWidget):
         self.table.setRowCount(len(walnuts))
         for row, walnut in enumerate(walnuts):
             image_count = len(repositories.list_walnut_images(int(walnut["id"])))
+            mesh = repositories.get_walnut_mesh(int(walnut["id"]))
             values = [
                 walnut["serial_no"],
                 f'{walnut["edge_mm"]:.2f}',
@@ -1109,6 +1115,7 @@ class WalnutTab(VarietyScopedWidget):
                 f'{walnut["weight_g"]:.2f}',
                 walnut["defect_level"],
                 f"{image_count} / 6",
+                "已导入" if mesh else "未导入",
                 "已锁定" if walnut["is_locked"] else "未锁定",
             ]
             for column, value in enumerate(values):
@@ -1144,6 +1151,7 @@ class WalnutTab(VarietyScopedWidget):
         has_selection = self._selected_walnut_id() is not None
         self.edit_button.setEnabled(has_selection)
         self.delete_button.setEnabled(has_selection)
+        self.import_mesh_button.setEnabled(has_selection)
         self.import_images_button.setEnabled(self.window.selected_variety_id is not None)
 
     def edit_selected_walnut(self) -> None:
@@ -1215,6 +1223,29 @@ class WalnutTab(VarietyScopedWidget):
             if len(result.skipped) > 12:
                 message += f"\n... 还有 {len(result.skipped) - 12} 条"
         QMessageBox.information(self, "图片导入完成", message)
+        self.window.refresh_all()
+
+    def import_mesh(self) -> None:
+        walnut_id = self._selected_walnut_id()
+        if walnut_id is None:
+            return
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "导入3D模型",
+            "",
+            "3D模型文件 (*.stl *.obj *.ply)",
+        )
+        if not files:
+            return
+        if len(files) > 1:
+            QMessageBox.warning(self, "一次导入一个模型", "每颗核桃当前只支持导入一个 3D 模型，请只选择一个文件。")
+            return
+        try:
+            import_walnut_mesh(walnut_id, files[0])
+        except Exception as exc:
+            self.window.show_error(f"导入3D模型失败: {exc}")
+            return
+        self.window.show_message("3D模型已导入")
         self.window.refresh_all()
 
     def show_image_naming_help(self) -> None:
@@ -1382,6 +1413,10 @@ class MatchingTab(VarietyScopedWidget):
             )
         else:
             tags.addWidget(create_chip("图片未评分", "#f3eee8", "#8a6d54"))
+        if candidate.mesh_similarity is not None:
+            tags.addWidget(create_chip(f"3D {candidate.mesh_similarity:.1f}", "#e8eef4", "#4d6276"))
+        else:
+            tags.addWidget(create_chip("3D未评分", "#f3eee8", "#8a6d54"))
         tags.addStretch(1)
         card_layout.addLayout(tags)
 

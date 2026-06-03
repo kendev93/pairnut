@@ -89,6 +89,27 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS walnut_meshes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        walnut_id INTEGER NOT NULL UNIQUE,
+        original_filename TEXT NOT NULL,
+        stored_path TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        FOREIGN KEY (walnut_id) REFERENCES walnuts(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS walnut_mesh_features (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mesh_id INTEGER NOT NULL UNIQUE,
+        feature_version TEXT NOT NULL,
+        dimensions_vector TEXT NOT NULL,
+        shape_vector TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (mesh_id) REFERENCES walnut_meshes(id) ON DELETE CASCADE
+    )
+    """,
+    """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pair_blacklist_pair
     ON pair_blacklist (walnut_id_1, walnut_id_2)
     """,

@@ -272,6 +272,90 @@ def delete_walnut_image(walnut_id: int, face_no: int) -> None:
         )
 
 
+def upsert_walnut_mesh(walnut_id: int, original_filename: str, stored_path: str) -> int:
+    timestamp = now_str()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO walnut_meshes (walnut_id, original_filename, stored_path, imported_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(walnut_id) DO UPDATE SET
+                original_filename = excluded.original_filename,
+                stored_path = excluded.stored_path,
+                imported_at = excluded.imported_at
+            """,
+            (walnut_id, original_filename, stored_path, timestamp),
+        )
+        row = cursor.execute("SELECT id FROM walnut_meshes WHERE walnut_id = ?", (walnut_id,)).fetchone()
+        return int(row["id"])
+
+
+def upsert_walnut_mesh_feature(
+    mesh_id: int,
+    feature_version: str,
+    dimensions_vector: str,
+    shape_vector: str,
+) -> int:
+    timestamp = now_str()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO walnut_mesh_features (
+                mesh_id, feature_version, dimensions_vector, shape_vector, created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(mesh_id) DO UPDATE SET
+                feature_version = excluded.feature_version,
+                dimensions_vector = excluded.dimensions_vector,
+                shape_vector = excluded.shape_vector,
+                created_at = excluded.created_at
+            """,
+            (mesh_id, feature_version, dimensions_vector, shape_vector, timestamp),
+        )
+        row = cursor.execute("SELECT id FROM walnut_mesh_features WHERE mesh_id = ?", (mesh_id,)).fetchone()
+        return int(row["id"])
+
+
+def get_walnut_mesh(walnut_id: int) -> dict[str, Any] | None:
+    with db_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM walnut_meshes
+            WHERE walnut_id = ?
+            """,
+            (walnut_id,),
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def list_walnut_mesh_features(walnut_id: int, feature_version: str | None = None) -> list[dict[str, Any]]:
+    params: list[Any] = [walnut_id]
+    version_clause = ""
+    if feature_version is not None:
+        version_clause = " AND wmf.feature_version = ?"
+        params.append(feature_version)
+    with db_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT wm.walnut_id, wm.stored_path, wmf.*
+            FROM walnut_meshes wm
+            JOIN walnut_mesh_features wmf ON wmf.mesh_id = wm.id
+            WHERE wm.walnut_id = ?{version_clause}
+            ORDER BY wmf.created_at DESC
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_walnut_mesh(walnut_id: int) -> None:
+    with db_connection() as conn:
+        conn.execute("DELETE FROM walnut_meshes WHERE walnut_id = ?", (walnut_id,))
+
+
 def list_locked_pairs(variety_id: int | None = None, active_only: bool = True) -> list[dict[str, Any]]:
     query = """
         SELECT lp.*,
