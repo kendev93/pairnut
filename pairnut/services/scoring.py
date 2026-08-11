@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from ..domain.models import DefectLevel
 
 
@@ -34,11 +36,14 @@ def defect_penalty(defect_level_1: str, defect_level_2: str) -> float:
     return (penalty_1 + penalty_2) / 2.0
 
 
-def within_tolerance(base: dict, candidate: dict, tolerance_mm: float) -> bool:
+def within_tolerance(base: dict, candidate: dict, tolerance_mm: float, multiplier: float = 1.0) -> bool:
+    if not math.isfinite(float(tolerance_mm)) or not math.isfinite(float(multiplier)) or multiplier <= 0:
+        raise ValueError("tolerance and multiplier must be finite; multiplier must be positive.")
+    screening_tolerance = tolerance_mm * multiplier
     return (
-        abs(base["edge_mm"] - candidate["edge_mm"]) <= tolerance_mm
-        and abs(base["belly_mm"] - candidate["belly_mm"]) <= tolerance_mm
-        and abs(base["height_mm"] - candidate["height_mm"]) <= tolerance_mm
+        abs(base["edge_mm"] - candidate["edge_mm"]) <= screening_tolerance
+        and abs(base["belly_mm"] - candidate["belly_mm"]) <= screening_tolerance
+        and abs(base["height_mm"] - candidate["height_mm"]) <= screening_tolerance
     )
 
 

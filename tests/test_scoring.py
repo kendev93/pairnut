@@ -24,6 +24,12 @@ class ScoringTests(unittest.TestCase):
         }
         self.assertFalse(within_tolerance(BASE_WALNUT, candidate, 1.0))
 
+    def test_within_tolerance_supports_a_wider_candidate_screening_window(self) -> None:
+        candidate = {**BASE_WALNUT, "edge_mm": 41.1}
+
+        self.assertFalse(within_tolerance(BASE_WALNUT, candidate, 1.0))
+        self.assertTrue(within_tolerance(BASE_WALNUT, candidate, 1.0, multiplier=1.25))
+
     def test_closer_weight_scores_higher(self) -> None:
         close_weight = {**BASE_WALNUT, "weight_g": 52.2}
         far_weight = {**BASE_WALNUT, "weight_g": 55.0}

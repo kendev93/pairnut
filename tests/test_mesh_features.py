@@ -12,6 +12,7 @@ from pairnut.domain.models import DefectLevel, SerialMode
 from pairnut.services.mesh_features import (
     MESH_FEATURE_VERSION,
     extract_mesh_features,
+    feature_similarity,
     import_walnut_mesh,
     walnut_mesh_similarity,
 )
@@ -95,6 +96,30 @@ class MeshFeatureTests(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertGreater(result.score, 99.0)
+
+    def test_feature_similarity_is_invariant_to_uniform_model_scaling(self) -> None:
+        left = {
+            "dimensions_vector": "[1,2,3]",
+            "shape_vector": "[6,2,3,0.5,0.8,0.1,0.66,0.33]",
+        }
+        right = {
+            "dimensions_vector": "[2,4,6]",
+            "shape_vector": "[48,16,12,0.5,0.8,0.1,0.66,0.33]",
+        }
+
+        self.assertGreater(feature_similarity(left, right), 99.0)
+
+    def test_feature_similarity_rejects_malformed_vector_lengths(self) -> None:
+        left = {
+            "dimensions_vector": "[1,2]",
+            "shape_vector": "[6,2,3,0.5,0.8,0.1,0.66,0.33]",
+        }
+        right = {
+            "dimensions_vector": "[1,2,3]",
+            "shape_vector": "[6,2,3,0.5,0.8,0.1,0.66,0.33]",
+        }
+
+        self.assertEqual(feature_similarity(left, right), 0.0)
 
     def test_unsupported_mesh_suffix_is_rejected(self) -> None:
         source = self._write_obj("NJS-01.glb")

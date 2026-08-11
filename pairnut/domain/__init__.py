@@ -1,5 +1,5 @@
 """Domain exports."""
 
-from .models import CandidateMatch, DefectLevel, SerialMode
+from .models import CandidateMatch, DefectLevel, PairMatch, SerialMode
 
-__all__ = ["CandidateMatch", "DefectLevel", "SerialMode"]
+__all__ = ["CandidateMatch", "DefectLevel", "PairMatch", "SerialMode"]

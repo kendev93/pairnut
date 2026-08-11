@@ -302,17 +302,44 @@ def _value_similarity(left: float, right: float) -> float:
 
 
 def _vector_similarity(left: list[float], right: list[float]) -> float:
-    if not left or not right:
+    if not left or not right or len(left) != len(right):
         return 0.0
-    length = min(len(left), len(right))
-    return sum(_value_similarity(left[index], right[index]) for index in range(length)) / length
+    return sum(_value_similarity(left[index], right[index]) for index in range(len(left))) / len(left)
+
+
+def _normalized_feature_vectors(feature: dict) -> tuple[list[float], list[float]] | None:
+    try:
+        dimensions = _deserialize_vector(feature["dimensions_vector"])
+        shape = _deserialize_vector(feature["shape_vector"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if len(dimensions) != 3 or len(shape) != 8:
+        return None
+    if not all(math.isfinite(value) for value in dimensions + shape):
+        return None
+
+    scale = max(abs(value) for value in dimensions)
+    if scale <= 0:
+        return None
+    area_scale = scale * scale
+    volume_scale = area_scale * scale
+    normalized_dimensions = [value / scale for value in dimensions]
+    normalized_shape = [
+        shape[0] / volume_scale,
+        shape[1] / volume_scale,
+        shape[2] / area_scale,
+        *shape[3:],
+    ]
+    return normalized_dimensions, normalized_shape
 
 
 def feature_similarity(left: dict, right: dict) -> float:
-    left_dimensions = _deserialize_vector(left["dimensions_vector"])
-    right_dimensions = _deserialize_vector(right["dimensions_vector"])
-    left_shape = _deserialize_vector(left["shape_vector"])
-    right_shape = _deserialize_vector(right["shape_vector"])
+    left_vectors = _normalized_feature_vectors(left)
+    right_vectors = _normalized_feature_vectors(right)
+    if left_vectors is None or right_vectors is None:
+        return 0.0
+    left_dimensions, left_shape = left_vectors
+    right_dimensions, right_shape = right_vectors
 
     dimension_score = _vector_similarity(left_dimensions, right_dimensions)
     volume_score = _vector_similarity(left_shape[:3], right_shape[:3])
@@ -320,9 +347,17 @@ def feature_similarity(left: dict, right: dict) -> float:
     return ((dimension_score * 0.45) + (volume_score * 0.25) + (shape_score * 0.30)) * 100.0
 
 
-def walnut_mesh_similarity(base_walnut_id: int, candidate_walnut_id: int) -> WalnutMeshSimilarity | None:
-    base_features = repositories.list_walnut_mesh_features(base_walnut_id, MESH_FEATURE_VERSION)
-    candidate_features = repositories.list_walnut_mesh_features(candidate_walnut_id, MESH_FEATURE_VERSION)
+def mesh_similarity_from_features(
+    base_features: list[dict],
+    candidate_features: list[dict],
+) -> WalnutMeshSimilarity | None:
     if not base_features or not candidate_features:
         return None
     return WalnutMeshSimilarity(score=feature_similarity(base_features[0], candidate_features[0]))
+
+
+def walnut_mesh_similarity(base_walnut_id: int, candidate_walnut_id: int) -> WalnutMeshSimilarity | None:
+    return mesh_similarity_from_features(
+        repositories.list_walnut_mesh_features(base_walnut_id, MESH_FEATURE_VERSION),
+        repositories.list_walnut_mesh_features(candidate_walnut_id, MESH_FEATURE_VERSION),
+    )

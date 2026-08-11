@@ -358,6 +358,33 @@ def list_walnut_image_features(walnut_id: int, feature_version: str | None = Non
         return [dict(row) for row in rows]
 
 
+def list_walnut_image_features_for_variety(
+    variety_id: int,
+    feature_version: str | None = None,
+) -> dict[int, list[dict[str, Any]]]:
+    params: list[Any] = [variety_id]
+    version_clause = ""
+    if feature_version is not None:
+        version_clause = " AND wif.feature_version = ?"
+        params.append(feature_version)
+    with db_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT wi.walnut_id, wi.face_no, wi.stored_path, wif.*
+            FROM walnut_images wi
+            JOIN walnuts w ON w.id = wi.walnut_id
+            JOIN walnut_image_features wif ON wif.image_id = wi.id
+            WHERE w.variety_id = ?{version_clause}
+            ORDER BY wi.walnut_id, wi.face_no
+            """,
+            params,
+        ).fetchall()
+    result: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        result.setdefault(int(row["walnut_id"]), []).append(dict(row))
+    return result
+
+
 def get_walnut_image(walnut_id: int, face_no: int) -> dict[str, Any] | None:
     with db_connection() as conn:
         row = conn.execute(
@@ -456,6 +483,33 @@ def list_walnut_mesh_features(walnut_id: int, feature_version: str | None = None
             params,
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def list_walnut_mesh_features_for_variety(
+    variety_id: int,
+    feature_version: str | None = None,
+) -> dict[int, list[dict[str, Any]]]:
+    params: list[Any] = [variety_id]
+    version_clause = ""
+    if feature_version is not None:
+        version_clause = " AND wmf.feature_version = ?"
+        params.append(feature_version)
+    with db_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT wm.walnut_id, wm.stored_path, wmf.*
+            FROM walnut_meshes wm
+            JOIN walnuts w ON w.id = wm.walnut_id
+            JOIN walnut_mesh_features wmf ON wmf.mesh_id = wm.id
+            WHERE w.variety_id = ?{version_clause}
+            ORDER BY wm.walnut_id, wmf.created_at DESC
+            """,
+            params,
+        ).fetchall()
+    result: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        result.setdefault(int(row["walnut_id"]), []).append(dict(row))
+    return result
 
 
 def delete_walnut_mesh(walnut_id: int) -> None:

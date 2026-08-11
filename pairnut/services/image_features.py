@@ -147,23 +147,27 @@ def feature_similarity(left: dict, right: dict) -> float:
     return ((color_score * 0.4) + (texture_score * 0.4) + (current_shape_similarity * 0.2)) * 100.0
 
 
-def walnut_image_similarity(base_walnut_id: int, candidate_walnut_id: int) -> WalnutImageSimilarity | None:
-    base_features = {
-        int(feature["face_no"]): feature
-        for feature in repositories.list_walnut_image_features(base_walnut_id, OPENCV_FEATURE_VERSION)
-    }
-    candidate_features = {
-        int(feature["face_no"]): feature
-        for feature in repositories.list_walnut_image_features(candidate_walnut_id, OPENCV_FEATURE_VERSION)
-    }
-    matched_faces = sorted(set(base_features) & set(candidate_features))
+def image_similarity_from_features(
+    base_features: Sequence[dict],
+    candidate_features: Sequence[dict],
+) -> WalnutImageSimilarity | None:
+    base_by_face = {int(feature["face_no"]): feature for feature in base_features}
+    candidate_by_face = {int(feature["face_no"]): feature for feature in candidate_features}
+    matched_faces = sorted(set(base_by_face) & set(candidate_by_face))
     if not matched_faces:
         return None
 
-    score = sum(feature_similarity(base_features[face_no], candidate_features[face_no]) for face_no in matched_faces)
+    score = sum(feature_similarity(base_by_face[face_no], candidate_by_face[face_no]) for face_no in matched_faces)
     return WalnutImageSimilarity(
         score=score / len(matched_faces),
         matched_faces=len(matched_faces),
-        base_faces=len(base_features),
-        candidate_faces=len(candidate_features),
+        base_faces=len(base_by_face),
+        candidate_faces=len(candidate_by_face),
+    )
+
+
+def walnut_image_similarity(base_walnut_id: int, candidate_walnut_id: int) -> WalnutImageSimilarity | None:
+    return image_similarity_from_features(
+        repositories.list_walnut_image_features(base_walnut_id, OPENCV_FEATURE_VERSION),
+        repositories.list_walnut_image_features(candidate_walnut_id, OPENCV_FEATURE_VERSION),
     )
