@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import math
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from .connection import db_connection
-
 
 _VALID_SERIAL_MODES = {"manual", "auto"}
 _VALID_DEFECT_LEVELS = {"none", "light", "medium", "heavy"}
@@ -16,7 +15,7 @@ _CODE_PREFIX_PATTERN = re.compile(r"^[A-Z0-9]+(?:-[A-Z0-9]+)*$")
 
 
 def now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def normalize_pair(walnut_id_1: int, walnut_id_2: int) -> tuple[int, int]:

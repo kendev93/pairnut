@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from pairnut import __version__
-
 
 LATEST_RELEASE_URL = "https://gitee.com/api/v5/repos/ck0318/pairnut/releases/latest"
 
@@ -54,7 +53,7 @@ def check_for_update(
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
             if not isinstance(payload, dict):
-                raise ValueError("release payload must be a JSON object")
+                raise TypeError("release payload must be a JSON object")
     except (HTTPError, URLError, TimeoutError, OSError, UnicodeError, TypeError, ValueError) as exc:
         return UpdateInfo(
             current_version=current_version,

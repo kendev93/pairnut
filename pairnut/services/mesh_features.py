@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import math
-from pathlib import Path
 import re
 import shutil
 import struct
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
 
 from ..database import get_meshes_dir, repositories
-
 
 MESH_FEATURE_VERSION = "mesh-basic-v1"
 SUPPORTED_MESH_SUFFIXES = {".stl", ".obj", ".ply"}

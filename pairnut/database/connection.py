@@ -8,7 +8,6 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-
 APP_DIR_NAME = "PairNut"
 
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -12,7 +12,6 @@ from urllib.request import urlopen
 
 from ..database import get_models_dir
 from .image_features import OPENCV_FEATURE_VERSION
-
 
 CONFIG_FILENAME = "model_config.json"
 MAX_MODEL_FILE_SIZE = 256 * 1024 * 1024

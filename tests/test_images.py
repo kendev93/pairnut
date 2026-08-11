@@ -12,7 +12,11 @@ from pairnut.database.connection import get_images_dir
 from pairnut.database.schema import init_database
 from pairnut.domain.models import DefectLevel, SerialMode
 from pairnut.services.image_features import ImageFeatures
-from pairnut.services.images import delete_walnut_image, import_walnut_images, parse_image_filename
+from pairnut.services.images import (
+    delete_walnut_image,
+    import_walnut_images,
+    parse_image_filename,
+)
 
 
 class ImageImportTests(unittest.TestCase):
@@ -280,9 +284,8 @@ class ImageImportTests(unittest.TestCase):
             import_walnut_images([source], self.variety_id)
         stored_file = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
 
-        with patch.object(repositories, "delete_walnut_image", side_effect=RuntimeError("database unavailable")):
-            with self.assertRaises(RuntimeError):
-                delete_walnut_image(self.walnut_id, 1)
+        with patch.object(repositories, "delete_walnut_image", side_effect=RuntimeError("database unavailable")), self.assertRaises(RuntimeError):
+            delete_walnut_image(self.walnut_id, 1)
 
         self.assertTrue(stored_file.exists())
         self.assertEqual(len(repositories.list_walnut_images(self.walnut_id)), 1)

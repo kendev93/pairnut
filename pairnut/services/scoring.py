@@ -6,7 +6,6 @@ import math
 
 from ..domain.models import DefectLevel
 
-
 DEFECT_PENALTIES = {
     DefectLevel.NONE.value: 0.0,
     DefectLevel.LIGHT.value: 5.0,

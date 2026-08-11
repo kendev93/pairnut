@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from .connection import db_connection
 
-
 CURRENT_SCHEMA_VERSION = 1
 
 

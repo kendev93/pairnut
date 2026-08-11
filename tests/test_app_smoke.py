@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
-
 from unittest.mock import Mock, patch
 
 from PySide6.QtWidgets import QApplication
@@ -48,7 +47,7 @@ class AppSmokeTests(unittest.TestCase):
             app.exec.assert_called_once_with()
 
     def test_navigation_refreshes_only_the_selected_tab(self) -> None:
-        app, window = build_application([])
+        _app, window = build_application([])
         with (
             patch.object(window.variety_tab, "refresh") as variety_refresh,
             patch.object(window.walnut_tab, "refresh") as walnut_refresh,

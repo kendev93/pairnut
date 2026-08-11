@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import unittest
 from dataclasses import replace
-import hashlib
 from unittest.mock import patch
 
 from pairnut.database.connection import get_models_dir
@@ -103,9 +103,8 @@ class ModelRegistryTests(unittest.TestCase):
             download_url="http://example.com/model.onnx",
             sha256="a" * 64,
         )
-        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)):
-            with self.assertRaises(ValueError):
-                download_model(model.model_id)
+        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)), self.assertRaises(ValueError):
+            download_model(model.model_id)
 
     def test_download_requires_checksum_and_cleans_temporary_file(self) -> None:
         model = replace(
@@ -114,9 +113,8 @@ class ModelRegistryTests(unittest.TestCase):
             sha256=None,
         )
 
-        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)):
-            with self.assertRaises(ValueError):
-                download_model(model.model_id)
+        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)), self.assertRaises(ValueError):
+            download_model(model.model_id)
 
         path = model_path(model)
         assert path is not None
@@ -150,9 +148,9 @@ class ModelRegistryTests(unittest.TestCase):
         with (
             patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)),
             patch("pairnut.services.model_registry.MAX_MODEL_FILE_SIZE", 1),
+            self.assertRaisesRegex(ValueError, "too large"),
         ):
-            with self.assertRaisesRegex(ValueError, "too large"):
-                download_model(model.model_id, urlopen_func=lambda url, timeout: response)
+            download_model(model.model_id, urlopen_func=lambda url, timeout: response)
 
         path = model_path(model)
         assert path is not None

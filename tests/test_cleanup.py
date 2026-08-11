@@ -104,9 +104,8 @@ class DataCleanupTests(unittest.TestCase):
         image_path.write_bytes(b"image")
         repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
 
-        with patch("pairnut.services.data_cleanup.shutil.move", side_effect=OSError("disk error")):
-            with self.assertRaises(OSError):
-                delete_walnut_data(self.walnut_id)
+        with patch("pairnut.services.data_cleanup.shutil.move", side_effect=OSError("disk error")), self.assertRaises(OSError):
+            delete_walnut_data(self.walnut_id)
 
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
         self.assertTrue(image_path.exists())
@@ -117,9 +116,8 @@ class DataCleanupTests(unittest.TestCase):
         image_path.write_bytes(b"image")
         repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
 
-        with patch.object(repositories, "delete_walnut", side_effect=RuntimeError("database unavailable")):
-            with self.assertRaises(RuntimeError):
-                delete_walnut_data(self.walnut_id)
+        with patch.object(repositories, "delete_walnut", side_effect=RuntimeError("database unavailable")), self.assertRaises(RuntimeError):
+            delete_walnut_data(self.walnut_id)
 
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
         self.assertTrue(image_path.exists())

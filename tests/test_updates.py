@@ -3,7 +3,11 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from pairnut.services.updates import LATEST_RELEASE_URL, check_for_update, is_newer_version
+from pairnut.services.updates import (
+    LATEST_RELEASE_URL,
+    check_for_update,
+    is_newer_version,
+)
 from pairnut.ui.views import UpdateCheckWorker
 
 

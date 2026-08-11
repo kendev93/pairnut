@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import lru_cache
 import math
+from dataclasses import dataclass
+from functools import cache
 
 import networkx as nx  # type: ignore[import-untyped]
 
@@ -21,7 +21,6 @@ from .mesh_features import (
     mesh_similarity_from_features,
 )
 from .scoring import MIN_RECOMMENDATION_SCORE, build_score, within_tolerance
-
 
 DEFAULT_CANDIDATE_LIMIT = 3
 # The wider window is used only to avoid dropping near matches too early;
@@ -410,7 +409,7 @@ def _select_non_overlapping_pairs(possible_pairs: list[PairMatch]) -> list[PairM
             return left[1] < right[1]
         return False
 
-    @lru_cache(maxsize=None)
+    @cache
     def solve(mask: int) -> tuple[float, tuple[tuple[int, int], ...]]:
         if mask == 0:
             return 0.0, ()

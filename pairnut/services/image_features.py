@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import math
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 from ..database import repositories
-
 
 OPENCV_FEATURE_VERSION = "opencv-v1"
 
@@ -74,7 +73,7 @@ def extract_opencv_features(image_path: Path) -> ImageFeatures:
     else:
         contour = max(contours, key=cv2.contourArea)
         area = float(cv2.contourArea(contour))
-        x, y, width, height = cv2.boundingRect(contour)
+        _x, _y, width, height = cv2.boundingRect(contour)
         perimeter = float(cv2.arcLength(contour, True))
         hull = cv2.convexHull(contour)
         hull_area = float(cv2.contourArea(hull))
@@ -101,7 +100,7 @@ def serialize_vector(vector: Sequence[float]) -> str:
 def deserialize_vector(value: str) -> list[float]:
     loaded = json.loads(value)
     if not isinstance(loaded, list):
-        raise ValueError("feature vector must be a JSON array")
+        raise TypeError("feature vector must be a JSON array")
     vector = [float(item) for item in loaded]
     if not all(math.isfinite(item) for item in vector):
         raise ValueError("feature vector must contain finite numbers")

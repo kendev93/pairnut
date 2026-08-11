@@ -7,7 +7,6 @@ from pathlib import Path
 
 from PIL import Image
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ICON = ROOT / "assets" / "icon.png"
 OUTPUT_DIR = ROOT / "build" / "icons"

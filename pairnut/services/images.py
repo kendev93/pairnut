@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
 import re
 import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
 
 from ..database import get_images_dir, repositories
-from .image_features import OPENCV_FEATURE_VERSION, extract_opencv_features, serialize_vector
-
+from .image_features import (
+    OPENCV_FEATURE_VERSION,
+    extract_opencv_features,
+    serialize_vector,
+)
 
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic"}
 FILENAME_PATTERN = re.compile(r"^(.+)[-_ ]([1-6])$")
@@ -90,7 +93,7 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
 
         try:
             features = extract_opencv_features(source)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             result.skipped.append(f"{source.name}: 图片特征提取失败：{exc}")
             continue
 
@@ -112,7 +115,7 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
                 texture_vector=serialize_vector(features.texture_vector),
                 shape_vector=serialize_vector(features.shape_vector),
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             if backup_path and backup_path.exists():
                 shutil.copy2(backup_path, target)
             elif target.exists() and not target_existed:

@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import shutil
 import tempfile
+from pathlib import Path
 
 from ..database import get_data_dir, get_images_dir, get_meshes_dir, repositories
-
 
 STAGING_PREFIX = ".pairnut-delete-"
 STAGING_MANIFEST = ".manifest.json"

@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from pairnut.database.connection import db_connection, get_db_path, get_images_dir, get_meshes_dir, get_models_dir
-from pairnut.database.schema import init_database
 from pairnut.database import repositories
+from pairnut.database.connection import (
+    db_connection,
+    get_db_path,
+    get_images_dir,
+    get_meshes_dir,
+    get_models_dir,
+)
+from pairnut.database.schema import init_database
 
 
 class SchemaTests(unittest.TestCase):
@@ -82,9 +89,9 @@ class SchemaTests(unittest.TestCase):
 
     def test_variety_unique_constraints(self) -> None:
         repositories.create_variety("狮子头", "SZT", 1.0)
-        with self.assertRaises(Exception):
+        with self.assertRaises(sqlite3.IntegrityError):
             repositories.create_variety("狮子头", "SZT2", 1.0)
-        with self.assertRaises(Exception):
+        with self.assertRaises(sqlite3.IntegrityError):
             repositories.create_variety("官帽", "SZT", 1.0)
 
     def test_variety_input_is_validated(self) -> None:

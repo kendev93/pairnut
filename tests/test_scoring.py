@@ -4,7 +4,6 @@ import unittest
 
 from pairnut.services.scoring import build_score, recommendation_label, within_tolerance
 
-
 BASE_WALNUT = {
     "edge_mm": 40.0,
     "belly_mm": 42.0,

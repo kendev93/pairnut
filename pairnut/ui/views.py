@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QCursor, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
     QAbstractItemView,
+    QAbstractSpinBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -48,7 +49,6 @@ from ..services.data_cleanup import delete_variety_data, delete_walnut_data
 from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_matching_view_data, lock_candidate_pair
 from ..services.mesh_features import import_walnut_mesh
-from ..services.scoring import MIN_RECOMMENDATION_SCORE, recommendation_label
 from ..services.model_registry import (
     can_download_model,
     delete_model,
@@ -58,9 +58,9 @@ from ..services.model_registry import (
     list_feature_models,
     set_active_model,
 )
+from ..services.scoring import MIN_RECOMMENDATION_SCORE, recommendation_label
 from ..services.serials import next_serial_no
 from ..services.updates import UpdateInfo, check_for_update
-
 
 APP_STYLESHEET = """
 QMainWindow {
@@ -385,7 +385,7 @@ class ImagePreviewDialog(QDialog):
             return
         try:
             delete_walnut_image(self.walnut_id, self.face_no)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             main_window = self.parent()
             if main_window is not None and hasattr(main_window, "show_error"):
                 main_window.show_error(f"删除图片失败: {exc}")
@@ -463,7 +463,7 @@ class UpdateCheckWorker(QObject):
     def run(self) -> None:
         try:
             info = check_for_update()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             info = UpdateInfo(
                 current_version=__version__,
                 latest_version=None,
@@ -860,7 +860,7 @@ class ModelManagerDialog(QDialog):
             return
         try:
             path = download_model(model.model_id)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(self, "下载失败", f"模型下载失败:\n{exc}")
             return
         QMessageBox.information(self, "下载完成", f"模型已保存到:\n{path}")
@@ -885,14 +885,14 @@ class ModelManagerDialog(QDialog):
             return
         try:
             delete_model(model.model_id)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(self, "删除失败", f"模型删除失败:\n{exc}")
             return
         self.refresh()
 
 
 class VarietyTab(QWidget):
-    def __init__(self, window: "PairNutMainWindow"):
+    def __init__(self, window: PairNutMainWindow):
         super().__init__()
         self.window = window
         self.table = QTableWidget(0, 3)
@@ -1014,7 +1014,7 @@ class VarietyTab(QWidget):
             repositories.create_variety(data.name, data.code_prefix, data.tolerance_mm)
             self.window.show_message("品种已创建")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"创建品种失败: {exc}")
 
     def edit_variety(self, variety_id: int) -> None:
@@ -1029,7 +1029,7 @@ class VarietyTab(QWidget):
             repositories.update_variety(variety_id, data.name, data.code_prefix, data.tolerance_mm)
             self.window.show_message("品种已更新")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"更新品种失败: {exc}")
 
     def delete_variety(self, variety_id: int) -> None:
@@ -1043,12 +1043,12 @@ class VarietyTab(QWidget):
             delete_variety_data(variety_id)
             self.window.show_message("品种已删除")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"删除品种失败: {exc}")
 
 
 class VarietyScopedWidget(QWidget):
-    def __init__(self, window: "PairNutMainWindow"):
+    def __init__(self, window: PairNutMainWindow):
         super().__init__()
         self.window = window
         self.variety_combo = self._create_variety_combo()
@@ -1068,8 +1068,7 @@ class VarietyScopedWidget(QWidget):
             self.combo_box.addItem(variety["name"], variety["id"])
         if self.combo_box.count():
             index = self.combo_box.findData(current_id)
-            if index < 0:
-                index = 0
+            index = max(index, 0)
             self.combo_box.setCurrentIndex(index)
         self.combo_box.blockSignals(False)
 
@@ -1079,7 +1078,7 @@ class VarietyScopedWidget(QWidget):
 
 
 class WalnutTab(VarietyScopedWidget):
-    def __init__(self, window: "PairNutMainWindow"):
+    def __init__(self, window: PairNutMainWindow):
         super().__init__(window)
         self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels(["编号", "边", "肚", "高", "克重", "瑕疵", "图片", "3D", "状态"])
@@ -1231,7 +1230,7 @@ class WalnutTab(VarietyScopedWidget):
             repositories.create_walnut(asdict(dialog.data()))
             self.window.show_message("核桃已创建")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"保存核桃失败: {exc}")
 
     def edit_walnut(self, walnut_id: int) -> None:
@@ -1245,7 +1244,7 @@ class WalnutTab(VarietyScopedWidget):
             repositories.update_walnut(walnut_id, asdict(dialog.data()))
             self.window.show_message("核桃已更新")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"更新核桃失败: {exc}")
 
     def delete_walnut(self, walnut_id: int) -> None:
@@ -1255,7 +1254,7 @@ class WalnutTab(VarietyScopedWidget):
             delete_walnut_data(walnut_id)
             self.window.show_message("核桃已删除")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"删除核桃失败: {exc}")
 
     def import_images(self) -> None:
@@ -1297,7 +1296,7 @@ class WalnutTab(VarietyScopedWidget):
             return
         try:
             import_walnut_mesh(walnut_id, files[0])
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"导入3D模型失败: {exc}")
             return
         self.window.show_message("3D模型已导入")
@@ -1319,7 +1318,7 @@ class WalnutTab(VarietyScopedWidget):
 
 
 class MatchingTab(VarietyScopedWidget):
-    def __init__(self, window: "PairNutMainWindow"):
+    def __init__(self, window: PairNutMainWindow):
         super().__init__(window)
         self.scroll_content = QWidget()
         self.scroll_layout = QVBoxLayout(self.scroll_content)
@@ -1555,7 +1554,7 @@ class MatchingTab(VarietyScopedWidget):
             lock_candidate_pair(variety_id, walnut_id_1, walnut_id_2)
             self.window.show_message("配对已锁定")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"锁定失败: {exc}")
 
     def _unlock_pair(self, pair_id: int) -> None:
@@ -1571,7 +1570,7 @@ class MatchingTab(VarietyScopedWidget):
             repositories.create_blacklist_pair(variety_id, walnut_id_1, walnut_id_2, reason=reason)
             self.window.show_message("已加入拉黑列表")
             self.window.refresh_active()
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"拉黑失败: {exc}")
 
     def manage_blacklist(self) -> None:
@@ -1766,7 +1765,7 @@ class PairNutMainWindow(QMainWindow):
 
     def _update_page_context(self, current_index: int | None = None) -> None:
         if current_index is None:
-            current_index = self.nav.currentRow() if self.nav.currentRow() >= 0 else 0
+            current_index = max(self.nav.currentRow(), 0)
         titles = [
             ("品种管理", "先维护品种与偏差规则，再进入核桃录入和配对流程。"),
             ("核桃管理", "按品种维护核桃基础数据，保持编号、尺寸和瑕疵信息一致。"),
@@ -1791,7 +1790,7 @@ class PairNutMainWindow(QMainWindow):
 
     def _refresh_current_tab(self, index: int | None = None) -> None:
         if index is None:
-            index = self.nav.currentRow() if self.nav.currentRow() >= 0 else 0
+            index = max(self.nav.currentRow(), 0)
         if index == 0:
             self.variety_tab.refresh()
         elif index == 1:

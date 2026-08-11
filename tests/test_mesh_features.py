@@ -20,7 +20,6 @@ from pairnut.services.mesh_features import (
     walnut_mesh_similarity,
 )
 
-
 TETRA_OBJ = """\
 v 0 0 0
 v 1 0 0
@@ -152,16 +151,14 @@ class MeshFeatureTests(unittest.TestCase):
     def test_import_rejects_oversized_file_before_parsing(self) -> None:
         source = self._write_obj("model.obj")
 
-        with patch("pairnut.services.mesh_features.MAX_MESH_FILE_SIZE", 1):
-            with self.assertRaisesRegex(ValueError, "文件过大"):
-                import_walnut_mesh(self.w1, source)
+        with patch("pairnut.services.mesh_features.MAX_MESH_FILE_SIZE", 1), self.assertRaisesRegex(ValueError, "文件过大"):
+            import_walnut_mesh(self.w1, source)
 
     def test_database_failure_does_not_leave_copied_mesh(self) -> None:
         source = self._write_obj("NJS-01.obj")
 
-        with patch.object(repositories, "upsert_walnut_mesh", side_effect=RuntimeError("database unavailable")):
-            with self.assertRaises(RuntimeError):
-                import_walnut_mesh(self.w1, source)
+        with patch.object(repositories, "upsert_walnut_mesh", side_effect=RuntimeError("database unavailable")), self.assertRaises(RuntimeError):
+            import_walnut_mesh(self.w1, source)
 
         self.assertIsNone(repositories.get_walnut_mesh(self.w1))
         self.assertFalse((get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj").exists())
@@ -173,9 +170,8 @@ class MeshFeatureTests(unittest.TestCase):
         original_content = stored_path.read_text(encoding="utf-8")
         source.write_text(TETRA_OBJ + "# replacement", encoding="utf-8")
 
-        with patch("pairnut.services.mesh_features.store_mesh_feature", side_effect=RuntimeError("feature store failed")):
-            with self.assertRaises(RuntimeError):
-                import_walnut_mesh(self.w1, source)
+        with patch("pairnut.services.mesh_features.store_mesh_feature", side_effect=RuntimeError("feature store failed")), self.assertRaises(RuntimeError):
+            import_walnut_mesh(self.w1, source)
 
         mesh = repositories.get_walnut_mesh(self.w1)
         self.assertIsNotNone(mesh)
@@ -205,9 +201,8 @@ class MeshFeatureTests(unittest.TestCase):
         import_walnut_mesh(self.w1, self._write_obj("NJS-01.obj"))
         stored_file = get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj"
 
-        with patch.object(repositories, "delete_walnut_mesh", side_effect=RuntimeError("database unavailable")):
-            with self.assertRaises(RuntimeError):
-                delete_walnut_mesh(self.w1)
+        with patch.object(repositories, "delete_walnut_mesh", side_effect=RuntimeError("database unavailable")), self.assertRaises(RuntimeError):
+            delete_walnut_mesh(self.w1)
 
         self.assertTrue(stored_file.exists())
         self.assertIsNotNone(repositories.get_walnut_mesh(self.w1))
