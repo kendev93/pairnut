@@ -97,6 +97,42 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/2.png")
 
+    def test_replacement_never_deletes_image_outside_data_directory(self) -> None:
+        outside_path = Path(self.tempdir.name).parent / f"{Path(self.tempdir.name).name}-outside-image.txt"
+        try:
+            outside_path.write_text("must survive", encoding="utf-8")
+            repositories.upsert_walnut_image(
+                self.walnut_id,
+                2,
+                "legacy.jpg",
+                str(outside_path),
+            )
+            replacement = Path(self.tempdir.name) / "NJS-01-2.PNG"
+            replacement.write_text("replacement", encoding="utf-8")
+
+            with self._feature_patches():
+                result = import_walnut_images([replacement], self.variety_id)
+
+            self.assertEqual(result.replaced_count, 1)
+            self.assertTrue(outside_path.exists())
+            self.assertEqual(outside_path.read_text(encoding="utf-8"), "must survive")
+        finally:
+            outside_path.unlink(missing_ok=True)
+
+    def test_oversized_image_is_skipped_before_feature_extraction(self) -> None:
+        source = Path(self.tempdir.name) / "NJS-01-2.JPG"
+        source.write_bytes(b"too large")
+
+        with (
+            patch("pairnut.services.images.MAX_IMAGE_FILE_SIZE", 1),
+            self._feature_patches() as extract_features,
+        ):
+            result = import_walnut_images([source], self.variety_id)
+
+        self.assertEqual(result.imported_count, 0)
+        self.assertIn("文件过大", result.skipped[0])
+        extract_features.assert_not_called()
+
     def test_import_walnut_images_skips_unknown_serial_and_bad_name(self) -> None:
         unknown = Path(self.tempdir.name) / "NJS-99-1.JPG"
         bad = Path(self.tempdir.name) / "NJS-01-front.JPG"

@@ -9,6 +9,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from .database import init_database
+from .services.data_cleanup import recover_stale_staging
 from .ui.views import PairNutMainWindow
 
 
@@ -27,6 +28,7 @@ def build_application(argv: list[str] | None = None) -> tuple[QApplication, Pair
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
     init_database()
+    recover_stale_staging()
     window = PairNutMainWindow(icon_path=icon_path)
     app.aboutToQuit.connect(window._teardown_ui)
     return app, window

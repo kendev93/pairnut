@@ -8,7 +8,12 @@ from unittest.mock import patch
 from pairnut.database import repositories
 from pairnut.database.connection import get_data_dir, get_images_dir, get_meshes_dir
 from pairnut.database.schema import init_database
-from pairnut.services.data_cleanup import delete_variety_data, delete_walnut_data
+from pairnut.services.data_cleanup import (
+    _stage_assets,
+    delete_variety_data,
+    delete_walnut_data,
+    recover_stale_staging,
+)
 
 
 class DataCleanupTests(unittest.TestCase):
@@ -119,6 +124,19 @@ class DataCleanupTests(unittest.TestCase):
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
         self.assertTrue(image_path.exists())
         self.assertEqual(list(get_data_dir().glob(".pairnut-delete-*")), [])
+
+    def test_stale_staging_manifest_restores_assets_after_restart(self) -> None:
+        image_path = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
+        image_path.parent.mkdir(parents=True)
+        image_path.write_bytes(b"image")
+        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
+
+        staging_root, _ = _stage_assets([f"{self.walnut_id}-NJS-01/1.jpg"], [])
+        self.assertFalse(image_path.exists())
+
+        self.assertEqual(recover_stale_staging(), 1)
+        self.assertTrue(image_path.exists())
+        self.assertFalse(staging_root.exists())
 
 
 if __name__ == "__main__":

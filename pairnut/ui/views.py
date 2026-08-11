@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -30,7 +29,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QStackedWidget,
     QStatusBar,
     QTableWidget,
@@ -395,7 +393,9 @@ class ImagePreviewDialog(QDialog):
                 QMessageBox.warning(self, "删除图片失败", str(exc))
             return
         main_window = self.parent()
-        if main_window is not None and hasattr(main_window, "refresh_all"):
+        if main_window is not None and hasattr(main_window, "refresh_active"):
+            main_window.refresh_active()
+        elif main_window is not None and hasattr(main_window, "refresh_all"):
             main_window.refresh_all()
         self.accept()
 
@@ -1013,7 +1013,7 @@ class VarietyTab(QWidget):
             data = dialog.data()
             repositories.create_variety(data.name, data.code_prefix, data.tolerance_mm)
             self.window.show_message("品种已创建")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"创建品种失败: {exc}")
 
@@ -1028,7 +1028,7 @@ class VarietyTab(QWidget):
             data = dialog.data()
             repositories.update_variety(variety_id, data.name, data.code_prefix, data.tolerance_mm)
             self.window.show_message("品种已更新")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"更新品种失败: {exc}")
 
@@ -1042,7 +1042,7 @@ class VarietyTab(QWidget):
         try:
             delete_variety_data(variety_id)
             self.window.show_message("品种已删除")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"删除品种失败: {exc}")
 
@@ -1230,7 +1230,7 @@ class WalnutTab(VarietyScopedWidget):
         try:
             repositories.create_walnut(asdict(dialog.data()))
             self.window.show_message("核桃已创建")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"保存核桃失败: {exc}")
 
@@ -1244,7 +1244,7 @@ class WalnutTab(VarietyScopedWidget):
         try:
             repositories.update_walnut(walnut_id, asdict(dialog.data()))
             self.window.show_message("核桃已更新")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"更新核桃失败: {exc}")
 
@@ -1254,7 +1254,7 @@ class WalnutTab(VarietyScopedWidget):
         try:
             delete_walnut_data(walnut_id)
             self.window.show_message("核桃已删除")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"删除核桃失败: {exc}")
 
@@ -1278,7 +1278,7 @@ class WalnutTab(VarietyScopedWidget):
             if len(result.skipped) > 12:
                 message += f"\n... 还有 {len(result.skipped) - 12} 条"
         QMessageBox.information(self, "图片导入完成", message)
-        self.window.refresh_all()
+        self.window.refresh_active()
 
     def import_mesh(self) -> None:
         walnut_id = self._selected_walnut_id()
@@ -1301,7 +1301,7 @@ class WalnutTab(VarietyScopedWidget):
             self.window.show_error(f"导入3D模型失败: {exc}")
             return
         self.window.show_message("3D模型已导入")
-        self.window.refresh_all()
+        self.window.refresh_active()
 
     def show_image_naming_help(self) -> None:
         QMessageBox.information(
@@ -1554,14 +1554,14 @@ class MatchingTab(VarietyScopedWidget):
         try:
             lock_candidate_pair(variety_id, walnut_id_1, walnut_id_2)
             self.window.show_message("配对已锁定")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"锁定失败: {exc}")
 
     def _unlock_pair(self, pair_id: int) -> None:
         repositories.unlock_pair(pair_id)
         self.window.show_message("配对已解除锁定")
-        self.window.refresh_all()
+        self.window.refresh_active()
 
     def _blacklist_pair(self, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
         reason, accepted = QInputDialog.getText(self, "拉黑配对", "拉黑原因（可选）：")
@@ -1570,7 +1570,7 @@ class MatchingTab(VarietyScopedWidget):
         try:
             repositories.create_blacklist_pair(variety_id, walnut_id_1, walnut_id_2, reason=reason)
             self.window.show_message("已加入拉黑列表")
-            self.window.refresh_all()
+            self.window.refresh_active()
         except Exception as exc:
             self.window.show_error(f"拉黑失败: {exc}")
 
@@ -1597,7 +1597,7 @@ class MatchingTab(VarietyScopedWidget):
             return
         if repositories.delete_blacklist_pair(int(selected_item["id"])):
             self.window.show_message("已移除拉黑配对")
-            self.window.refresh_all()
+            self.window.refresh_active()
 
 
 class PairNutMainWindow(QMainWindow):
@@ -1634,9 +1634,10 @@ class PairNutMainWindow(QMainWindow):
         root_layout.addWidget(self._build_sidebar(), 0)
         root_layout.addWidget(self._build_content_area(), 1)
         self.setCentralWidget(root)
+        self.nav.currentRowChanged.connect(self._handle_navigation_change)
 
         self._build_menu()
-        self.refresh_all()
+        self.refresh_active()
         QTimer.singleShot(1800, self.check_for_updates_silently)
 
     def _build_sidebar(self) -> QFrame:
@@ -1761,21 +1762,11 @@ class PairNutMainWindow(QMainWindow):
 
     def set_selected_variety(self, variety_id: int | None) -> None:
         self.selected_variety_id = variety_id
-        self.refresh_all()
+        self.refresh_active()
 
-    def refresh_all(self) -> None:
-        varieties = repositories.list_varieties()
-        if self.selected_variety_id is None or not any(v["id"] == self.selected_variety_id for v in varieties):
-            self.selected_variety_id = varieties[0]["id"] if varieties else None
-
-        self.variety_tab.refresh()
-        self.walnut_tab.refresh()
-        self.matching_tab.refresh()
-
-        selected_variety = repositories.get_variety(self.selected_variety_id) if self.selected_variety_id else None
-        self.current_variety_chip.setText(selected_variety["name"] if selected_variety else "未选中品种")
-
-        current_index = self.nav.currentRow() if self.nav.currentRow() >= 0 else 0
+    def _update_page_context(self, current_index: int | None = None) -> None:
+        if current_index is None:
+            current_index = self.nav.currentRow() if self.nav.currentRow() >= 0 else 0
         titles = [
             ("品种管理", "先维护品种与偏差规则，再进入核桃录入和配对流程。"),
             ("核桃管理", "按品种维护核桃基础数据，保持编号、尺寸和瑕疵信息一致。"),
@@ -1784,11 +1775,47 @@ class PairNutMainWindow(QMainWindow):
         self.page_title_label.setText(titles[current_index][0])
         self.page_subtitle_label.setText(titles[current_index][1])
 
+    def _refresh_global_state(self) -> None:
+        varieties = repositories.list_varieties()
+        if self.selected_variety_id is None or not any(v["id"] == self.selected_variety_id for v in varieties):
+            self.selected_variety_id = varieties[0]["id"] if varieties else None
+
+        selected_variety = repositories.get_variety(self.selected_variety_id) if self.selected_variety_id else None
+        self.current_variety_chip.setText(selected_variety["name"] if selected_variety else "未选中品种")
+
         walnuts = repositories.list_walnuts(include_locked=True)
         locked_pairs = repositories.list_locked_pairs(active_only=True)
         self._update_metric_widget(self.variety_count_label, str(len(varieties)))
         self._update_metric_widget(self.walnut_count_label, str(len(walnuts)))
         self._update_metric_widget(self.locked_count_label, str(len(locked_pairs)))
+
+    def _refresh_current_tab(self, index: int | None = None) -> None:
+        if index is None:
+            index = self.nav.currentRow() if self.nav.currentRow() >= 0 else 0
+        if index == 0:
+            self.variety_tab.refresh()
+        elif index == 1:
+            self.walnut_tab.refresh()
+        elif index == 2:
+            self.matching_tab.refresh()
+
+    def _handle_navigation_change(self, index: int) -> None:
+        self.stack.setCurrentIndex(index)
+        self._update_page_context(index)
+        self._refresh_current_tab(index)
+
+    def refresh_active(self) -> None:
+        """Refresh shared metrics and only the visible page after a mutation."""
+        self._refresh_global_state()
+        self._refresh_current_tab()
+
+    def refresh_all(self) -> None:
+        """Refresh every page explicitly requested by the user."""
+        self._refresh_global_state()
+        self.variety_tab.refresh()
+        self.walnut_tab.refresh()
+        self.matching_tab.refresh()
+        self._update_page_context()
 
     def _update_metric_widget(self, widget: QWidget, value: str) -> None:
         layout = widget.layout()

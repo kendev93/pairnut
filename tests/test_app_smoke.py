@@ -46,3 +46,18 @@ class AppSmokeTests(unittest.TestCase):
             build_application_mock.assert_called_once_with([])
             window.showMaximized.assert_called_once_with()
             app.exec.assert_called_once_with()
+
+    def test_navigation_refreshes_only_the_selected_tab(self) -> None:
+        app, window = build_application([])
+        with (
+            patch.object(window.variety_tab, "refresh") as variety_refresh,
+            patch.object(window.walnut_tab, "refresh") as walnut_refresh,
+            patch.object(window.matching_tab, "refresh") as matching_refresh,
+        ):
+            window._handle_navigation_change(2)
+
+        self.assertEqual(window.stack.currentIndex(), 2)
+        variety_refresh.assert_not_called()
+        walnut_refresh.assert_not_called()
+        matching_refresh.assert_called_once_with()
+        window.close()

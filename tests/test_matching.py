@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from pairnut.database import repositories
+from pairnut.database.connection import db_connection
 from pairnut.database.schema import init_database
 from pairnut.domain.models import CandidateMatch, PairMatch
 from pairnut.services.image_features import OPENCV_FEATURE_VERSION
@@ -148,6 +149,16 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(result[self.w1], [])
         for candidate in result[self.w3]:
             self.assertNotEqual(candidate.walnut_id, self.w2)
+
+    def test_active_lock_table_is_source_of_truth_for_matching(self) -> None:
+        repositories.lock_pair(self.variety_id, self.w1, self.w2)
+        with db_connection() as conn:
+            conn.execute("UPDATE walnuts SET is_locked = 0 WHERE id IN (?, ?)", (self.w1, self.w2))
+
+        result = get_candidates_for_variety(self.variety_id)
+
+        self.assertEqual(result[self.w1], [])
+        self.assertNotIn(self.w2, [item.walnut_id for item in result[self.w3]])
 
     def test_unlock_after_second_lock_same_pair(self) -> None:
         """Regression: old unique index on (pair, is_active) blocked a second unlock."""
@@ -335,3 +346,39 @@ class MatchingTests(unittest.TestCase):
         )
 
         self.assertEqual({(item.walnut_id_1, item.walnut_id_2) for item in result}, {(1, 3), (2, 4)})
+
+    def test_large_non_overlapping_selection_does_not_use_greedy_local_optimum(self) -> None:
+        def pair(left: int, right: int, score: float) -> PairMatch:
+            return PairMatch(
+                left,
+                right,
+                CandidateMatch(
+                    walnut_id=right,
+                    serial_no=f"N-{right}",
+                    total_score=score,
+                    dimension_score=score,
+                    weight_bonus=0.0,
+                    defect_penalty=0.0,
+                    edge_diff=0.0,
+                    belly_diff=0.0,
+                    height_diff=0.0,
+                    weight_diff=0.0,
+                    defect_level="none",
+                ),
+            )
+
+        possible = [
+            pair(1, 2, 100.0),
+            pair(1, 3, 99.0),
+            pair(2, 4, 98.0),
+            pair(3, 4, 1.0),
+        ]
+        possible.extend(pair(index, index + 1, 10.0) for index in range(10, 28, 2))
+
+        result = _select_non_overlapping_pairs(possible)
+
+        selected = {(item.walnut_id_1, item.walnut_id_2) for item in result}
+        self.assertIn((1, 3), selected)
+        self.assertIn((2, 4), selected)
+        self.assertNotIn((1, 2), selected)
+        self.assertNotIn((3, 4), selected)

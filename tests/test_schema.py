@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from pairnut.database.connection import get_db_path, get_images_dir, get_meshes_dir, get_models_dir
+from pairnut.database.connection import db_connection, get_db_path, get_images_dir, get_meshes_dir, get_models_dir
 from pairnut.database.schema import init_database
 from pairnut.database import repositories
 
@@ -24,6 +24,12 @@ class SchemaTests(unittest.TestCase):
 
     def test_init_database_creates_sqlite_file(self) -> None:
         self.assertTrue(get_db_path().exists())
+
+    def test_init_database_sets_schema_version(self) -> None:
+        with db_connection() as conn:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+
+        self.assertEqual(version, 1)
 
     def test_development_data_dir_uses_project_data_directory(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)

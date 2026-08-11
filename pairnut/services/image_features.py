@@ -55,7 +55,8 @@ def extract_opencv_features(image_path: Path) -> ImageFeatures:
     sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
     sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
     gradient = cv2.magnitude(sobel_x, sobel_y)
-    gradient_hist = cv2.calcHist([np.uint8(np.clip(gradient, 0, 255))], [0], None, [16], [0, 256])
+    gradient_image = np.asarray(np.clip(gradient, 0, 255), dtype=np.uint8)
+    gradient_hist = cv2.calcHist([gradient_image], [0], None, [16], [0, 256])
     texture_vector = (
         _normalize(gray_hist)
         + _normalize(gradient_hist)

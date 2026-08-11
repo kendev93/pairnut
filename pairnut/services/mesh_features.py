@@ -16,6 +16,7 @@ from ..database import get_meshes_dir, repositories
 
 MESH_FEATURE_VERSION = "mesh-basic-v1"
 SUPPORTED_MESH_SUFFIXES = {".stl", ".obj", ".ply"}
+MAX_MESH_FILE_SIZE = 100 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -272,6 +273,11 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
         raise ValueError("仅支持 STL、OBJ、PLY 3D 模型文件。")
     if not source.exists() or not source.is_file():
         raise ValueError("模型文件不存在。")
+    try:
+        if source.stat().st_size > MAX_MESH_FILE_SIZE:
+            raise ValueError(f"模型文件过大，不能超过 {MAX_MESH_FILE_SIZE // (1024 * 1024)} MB。")
+    except OSError as exc:
+        raise ValueError(f"无法读取模型文件信息：{exc}") from exc
 
     walnut = repositories.get_walnut(walnut_id)
     if walnut is None:

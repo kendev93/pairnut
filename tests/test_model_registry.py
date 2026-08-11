@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from dataclasses import replace
+import hashlib
+from unittest.mock import patch
 
 from pairnut.database.connection import get_models_dir
 from pairnut.services.model_registry import (
@@ -29,6 +32,23 @@ class ModelRegistryTests(unittest.TestCase):
     def tearDown(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)
         self.tempdir.cleanup()
+
+    class _FakeResponse:
+        def __init__(self, data: bytes):
+            self.data = data
+            self.offset = 0
+            self.headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def read(self, size: int) -> bytes:
+            chunk = self.data[self.offset : self.offset + size]
+            self.offset += len(chunk)
+            return chunk
 
     def test_builtin_opencv_model_is_default_and_downloaded(self) -> None:
         self.assertEqual(get_active_model_id(), BUILTIN_OPENCV_MODEL.model_id)
@@ -76,6 +96,68 @@ class ModelRegistryTests(unittest.TestCase):
     def test_download_without_configured_url_fails(self) -> None:
         with self.assertRaises(ValueError):
             download_model(OPTIONAL_MOBILENET_MODEL.model_id)
+
+    def test_download_rejects_non_https_url(self) -> None:
+        model = replace(
+            OPTIONAL_MOBILENET_MODEL,
+            download_url="http://example.com/model.onnx",
+            sha256="a" * 64,
+        )
+        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)):
+            with self.assertRaises(ValueError):
+                download_model(model.model_id)
+
+    def test_download_requires_checksum_and_cleans_temporary_file(self) -> None:
+        model = replace(
+            OPTIONAL_MOBILENET_MODEL,
+            download_url="https://example.com/model.onnx",
+            sha256=None,
+        )
+
+        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)):
+            with self.assertRaises(ValueError):
+                download_model(model.model_id)
+
+        path = model_path(model)
+        assert path is not None
+        self.assertFalse(path.exists())
+        self.assertFalse(path.with_suffix(path.suffix + ".download").exists())
+
+    def test_download_streams_and_replaces_atomically_after_checksum(self) -> None:
+        data = b"model bytes"
+        model = replace(
+            OPTIONAL_MOBILENET_MODEL,
+            download_url="https://example.com/model.onnx",
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+        response = self._FakeResponse(data)
+
+        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)):
+            path = download_model(model.model_id, urlopen_func=lambda url, timeout: response)
+
+        self.assertEqual(path.read_bytes(), data)
+        path.unlink()
+
+    def test_download_rejects_oversized_response_and_removes_temp_file(self) -> None:
+        data = b"too large"
+        model = replace(
+            OPTIONAL_MOBILENET_MODEL,
+            download_url="https://example.com/model.onnx",
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+        response = self._FakeResponse(data)
+
+        with (
+            patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)),
+            patch("pairnut.services.model_registry.MAX_MODEL_FILE_SIZE", 1),
+        ):
+            with self.assertRaisesRegex(ValueError, "too large"):
+                download_model(model.model_id, urlopen_func=lambda url, timeout: response)
+
+        path = model_path(model)
+        assert path is not None
+        self.assertFalse(path.exists())
+        self.assertFalse(path.with_suffix(path.suffix + ".download").exists())
 
     def test_delete_optional_model_removes_file_and_resets_active_model(self) -> None:
         path = model_path(OPTIONAL_MOBILENET_MODEL)

@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest-cov>=6.0
+ruff>=0.11
+types-networkx>=3.0

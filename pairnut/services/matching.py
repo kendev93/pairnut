@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 import math
 
+import networkx as nx  # type: ignore[import-untyped]
+
 from ..database import repositories
 from ..domain.models import CandidateMatch, PairMatch
 from .image_features import (
@@ -380,22 +382,23 @@ def _select_non_overlapping_pairs(possible_pairs: list[PairMatch]) -> list[PairM
     )
     unique_pairs: dict[tuple[int, int], PairMatch] = {}
     for pair in ordered_pairs:
-        key = tuple(sorted((pair.walnut_id_1, pair.walnut_id_2)))
+        key = _pair_key(pair.walnut_id_1, pair.walnut_id_2)
         unique_pairs.setdefault(key, pair)
-
-    def greedy() -> list[PairMatch]:
-        used_ids: set[int] = set()
-        result: list[PairMatch] = []
-        for pair in ordered_pairs:
-            if pair.walnut_id_1 in used_ids or pair.walnut_id_2 in used_ids:
-                continue
-            used_ids.update((pair.walnut_id_1, pair.walnut_id_2))
-            result.append(pair)
-        return result
 
     walnut_ids = sorted({walnut_id for pair in unique_pairs for walnut_id in pair})
     if len(walnut_ids) > 20:
-        return greedy()
+        graph = nx.Graph()
+        graph.add_nodes_from(walnut_ids)
+        for index, key in enumerate(sorted(unique_pairs)):
+            pair = unique_pairs[key]
+            # The tiny deterministic tie-breaker never changes a meaningful score.
+            tie_breaker = (len(unique_pairs) - index) * 1e-10
+            graph.add_edge(key[0], key[1], weight=pair.candidate.total_score + tie_breaker)
+        large_selected_keys = sorted(
+            _pair_key(int(left), int(right))
+            for left, right in nx.max_weight_matching(graph, maxcardinality=False, weight="weight")
+        )
+        return [unique_pairs[key] for key in large_selected_keys]
 
     def better(
         left: tuple[float, tuple[tuple[int, int], ...]],
@@ -433,8 +436,8 @@ def _select_non_overlapping_pairs(possible_pairs: list[PairMatch]) -> list[PairM
             remaining_mask ^= right_bit
         return best
 
-    _, selected_keys = solve((1 << len(walnut_ids)) - 1)
-    return [unique_pairs[key] for key in selected_keys]
+    _, exact_selected_keys = solve((1 << len(walnut_ids)) - 1)
+    return [unique_pairs[key] for key in exact_selected_keys]
 
 
 def get_non_overlapping_pairs(

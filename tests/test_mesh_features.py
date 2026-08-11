@@ -149,6 +149,13 @@ class MeshFeatureTests(unittest.TestCase):
         self.assertIsNone(repositories.get_walnut_mesh(self.w1))
         self.assertFalse((get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj").exists())
 
+    def test_import_rejects_oversized_file_before_parsing(self) -> None:
+        source = self._write_obj("model.obj")
+
+        with patch("pairnut.services.mesh_features.MAX_MESH_FILE_SIZE", 1):
+            with self.assertRaisesRegex(ValueError, "文件过大"):
+                import_walnut_mesh(self.w1, source)
+
     def test_database_failure_does_not_leave_copied_mesh(self) -> None:
         source = self._write_obj("NJS-01.obj")
 

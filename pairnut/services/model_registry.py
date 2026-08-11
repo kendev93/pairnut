@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from ..database import get_models_dir
@@ -14,6 +15,8 @@ from .image_features import OPENCV_FEATURE_VERSION
 
 
 CONFIG_FILENAME = "model_config.json"
+MAX_MODEL_FILE_SIZE = 256 * 1024 * 1024
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -121,23 +124,55 @@ def download_model(model_id: str, urlopen_func=urlopen) -> Path:
         raise ValueError("Built-in model does not need downloading.")
     if not model.download_url:
         raise ValueError("Model download URL is not configured yet.")
+    parsed_url = urlparse(model.download_url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise ValueError("Model download URL must use HTTPS.")
+    if not model.sha256 or len(model.sha256) != 64 or any(
+        character not in "0123456789abcdefABCDEF" for character in model.sha256
+    ):
+        raise ValueError("Model download requires a valid SHA-256 checksum.")
 
     path = model_path(model)
     if path is None:
         raise ValueError("Model file path is not configured.")
 
     temp_path = path.with_suffix(path.suffix + ".download")
-    with urlopen_func(model.download_url, timeout=60) as response:
-        data = response.read()
+    try:
+        with urlopen_func(model.download_url, timeout=60) as response:
+            headers = getattr(response, "headers", None)
+            content_length = headers.get("Content-Length") if headers is not None else None
+            if content_length is not None:
+                try:
+                    declared_size = int(content_length)
+                except (TypeError, ValueError):
+                    declared_size = None
+                if declared_size is not None and declared_size > MAX_MODEL_FILE_SIZE:
+                    raise ValueError("Model file is too large.")
 
-    if model.sha256:
-        digest = hashlib.sha256(data).hexdigest()
-        if digest.lower() != model.sha256.lower():
+            digest = hashlib.sha256()
+            total_size = 0
+            with temp_path.open("wb") as target:
+                while True:
+                    chunk = response.read(DOWNLOAD_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > MAX_MODEL_FILE_SIZE:
+                        raise ValueError("Model file is too large.")
+                    digest.update(chunk)
+                    target.write(chunk)
+
+        if digest.hexdigest().lower() != model.sha256.lower():
             raise ValueError("Downloaded model checksum does not match.")
 
-    temp_path.write_bytes(data)
-    temp_path.replace(path)
-    return path
+        temp_path.replace(path)
+        return path
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 def delete_model(model_id: str) -> None:

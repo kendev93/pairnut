@@ -13,6 +13,7 @@ from .image_features import OPENCV_FEATURE_VERSION, extract_opencv_features, ser
 
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic"}
 FILENAME_PATTERN = re.compile(r"^(.+)[-_ ]([1-6])$")
+MAX_IMAGE_FILE_SIZE = 20 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,13 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
             continue
         if not source.exists() or not source.is_file():
             result.skipped.append(f"{source.name}: 文件不存在")
+            continue
+        try:
+            if source.stat().st_size > MAX_IMAGE_FILE_SIZE:
+                result.skipped.append(f"{source.name}: 文件过大，不能超过 {MAX_IMAGE_FILE_SIZE // (1024 * 1024)} MB")
+                continue
+        except OSError as exc:
+            result.skipped.append(f"{source.name}: 无法读取文件信息：{exc}")
             continue
 
         walnut = repositories.get_walnut_by_serial_and_variety(parsed.serial_no, variety_id)
@@ -118,9 +126,15 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
                 backup_path.unlink()
 
         if existing_image:
-            old_path = images_root / existing_image["stored_path"]
-            if old_path != target and old_path.exists():
-                old_path.unlink()
+            try:
+                old_path = _resolve_stored_image_path(existing_image["stored_path"])
+            except ValueError:
+                old_path = None
+            if old_path is not None and old_path != target and old_path.exists():
+                try:
+                    old_path.unlink()
+                except OSError as exc:
+                    result.skipped.append(f"{source.name}: 旧图片清理失败，已保留旧文件：{exc}")
             result.replaced_count += 1
         else:
             result.imported_count += 1

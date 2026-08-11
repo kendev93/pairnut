@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime
 import math
 import re
@@ -28,6 +27,26 @@ def normalize_pair(walnut_id_1: int, walnut_id_2: int) -> tuple[int, int]:
 
 def row_to_dict(row) -> dict[str, Any] | None:
     return dict(row) if row else None
+
+
+def _effective_walnut_dict(row) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    result = dict(row)
+    effective_lock = result.pop("effective_is_locked", None)
+    if effective_lock is not None:
+        result["is_locked"] = int(effective_lock)
+    return result
+
+
+def _effective_lock_projection(alias: str = "walnuts") -> str:
+    return f"""
+        CASE WHEN EXISTS (
+            SELECT 1 FROM locked_pairs active_lock
+            WHERE active_lock.is_active = 1
+              AND (active_lock.walnut_id_1 = {alias}.id OR active_lock.walnut_id_2 = {alias}.id)
+        ) THEN 1 ELSE 0 END AS effective_is_locked
+    """
 
 
 def validate_variety_input(name: str, code_prefix: str, tolerance_mm: float) -> tuple[str, str, float]:
@@ -194,28 +213,37 @@ def delete_walnut(walnut_id: int) -> None:
 
 def get_walnut(walnut_id: int) -> dict[str, Any] | None:
     with db_connection() as conn:
-        row = conn.execute("SELECT * FROM walnuts WHERE id = ?", (walnut_id,)).fetchone()
-        return row_to_dict(row)
+        row = conn.execute(
+            f"SELECT walnuts.*, {_effective_lock_projection()} FROM walnuts WHERE id = ?",
+            (walnut_id,),
+        ).fetchone()
+        return _effective_walnut_dict(row)
 
 
 def get_walnut_by_serial(serial_no: str) -> dict[str, Any] | None:
     with db_connection() as conn:
-        row = conn.execute("SELECT * FROM walnuts WHERE serial_no = ?", (serial_no.strip(),)).fetchone()
-        return row_to_dict(row)
+        row = conn.execute(
+            f"SELECT walnuts.*, {_effective_lock_projection()} FROM walnuts WHERE serial_no = ?",
+            (serial_no.strip(),),
+        ).fetchone()
+        return _effective_walnut_dict(row)
 
 
 def get_walnut_by_serial_and_variety(serial_no: str, variety_id: int) -> dict[str, Any] | None:
     with db_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM walnuts WHERE serial_no = ? AND variety_id = ?",
+            f"SELECT walnuts.*, {_effective_lock_projection()} FROM walnuts WHERE serial_no = ? AND variety_id = ?",
             (serial_no.strip(), variety_id),
         ).fetchone()
-        return row_to_dict(row)
+        return _effective_walnut_dict(row)
 
 
 def list_walnuts(variety_id: int | None = None, include_locked: bool = True) -> list[dict[str, Any]]:
-    query = """
-        SELECT walnuts.*, varieties.name AS variety_name, varieties.code_prefix, varieties.tolerance_mm
+    effective_lock_projection = _effective_lock_projection().strip()
+    query = f"""
+        SELECT walnuts.*,
+               {effective_lock_projection},
+               varieties.name AS variety_name, varieties.code_prefix, varieties.tolerance_mm
         FROM walnuts
         JOIN varieties ON varieties.id = walnuts.variety_id
     """
@@ -225,13 +253,24 @@ def list_walnuts(variety_id: int | None = None, include_locked: bool = True) -> 
         clauses.append("walnuts.variety_id = ?")
         params.append(variety_id)
     if not include_locked:
-        clauses.append("walnuts.is_locked = 0")
+        clauses.append(
+            "NOT EXISTS ("
+            "SELECT 1 FROM locked_pairs active_lock "
+            "WHERE active_lock.is_active = 1 "
+            "AND (active_lock.walnut_id_1 = walnuts.id OR active_lock.walnut_id_2 = walnuts.id)"
+            ")"
+        )
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
     query += " ORDER BY walnuts.serial_no COLLATE NOCASE"
     with db_connection() as conn:
         rows = conn.execute(query, params).fetchall()
-        return [dict(row) for row in rows]
+        walnuts: list[dict[str, Any]] = []
+        for row in rows:
+            walnut = _effective_walnut_dict(row)
+            if walnut is not None:
+                walnuts.append(walnut)
+        return walnuts
 
 
 def upsert_walnut_image(walnut_id: int, face_no: int, original_filename: str, stored_path: str) -> int:

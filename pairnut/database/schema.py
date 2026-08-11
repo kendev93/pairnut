@@ -5,6 +5,9 @@ from __future__ import annotations
 from .connection import db_connection
 
 
+CURRENT_SCHEMA_VERSION = 1
+
+
 SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS varieties (
@@ -138,9 +141,16 @@ def _ensure_locked_pairs_active_unique_index(conn) -> None:
 
 
 def init_database() -> None:
-    """Create the current schema."""
+    """Create the current schema and record its migration version."""
     with db_connection() as conn:
+        current_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > CURRENT_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"数据库版本 {current_version} 高于应用支持的版本 {CURRENT_SCHEMA_VERSION}。"
+            )
         cursor = conn.cursor()
         for statement in SCHEMA_STATEMENTS:
             cursor.execute(statement)
         _ensure_locked_pairs_active_unique_index(conn)
+        if current_version < CURRENT_SCHEMA_VERSION:
+            conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
