@@ -41,6 +41,8 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from pairnut import __version__
+
 from ..database import get_data_dir, get_images_dir, get_models_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
 from ..services.data_cleanup import delete_variety_data, delete_walnut_data
@@ -444,7 +446,17 @@ class UpdateCheckWorker(QObject):
     finished = Signal(object)
 
     def run(self) -> None:
-        self.finished.emit(check_for_update())
+        try:
+            info = check_for_update()
+        except Exception as exc:
+            info = UpdateInfo(
+                current_version=__version__,
+                latest_version=None,
+                release_url=None,
+                has_update=False,
+                error=str(exc),
+            )
+        self.finished.emit(info)
 
 
 @dataclass(slots=True)
@@ -583,6 +595,15 @@ class VarietyDialog(QDialog):
             tolerance_mm=float(self.tolerance_spin.value()),
         )
 
+    def accept(self) -> None:  # type: ignore[override]
+        try:
+            data = self.data()
+            repositories.validate_variety_input(data.name, data.code_prefix, data.tolerance_mm)
+        except ValueError as exc:
+            QMessageBox.warning(self, "输入有误", str(exc))
+            return
+        super().accept()
+
 
 class WalnutDialog(QDialog):
     def __init__(self, parent: QWidget | None, variety_id: int, walnut: dict | None = None):
@@ -700,6 +721,14 @@ class WalnutDialog(QDialog):
             defect_level=self.defect_combo.currentData(),
             notes=self.notes_edit.toPlainText().strip() or None,
         )
+
+    def accept(self) -> None:  # type: ignore[override]
+        try:
+            repositories.validate_walnut_input(asdict(self.data()))
+        except ValueError as exc:
+            QMessageBox.warning(self, "输入有误", str(exc))
+            return
+        super().accept()
 
 
 class ModelManagerDialog(QDialog):

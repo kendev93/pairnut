@@ -48,6 +48,13 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual(model_config_path().parent, get_models_dir())
         self.assertTrue(model_config_path().exists())
 
+    def test_malformed_model_config_falls_back_to_builtin_model(self) -> None:
+        path = model_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("not json", encoding="utf-8")
+
+        self.assertEqual(get_active_model_id(), BUILTIN_OPENCV_MODEL.model_id)
+
     def test_unknown_model_cannot_be_activated(self) -> None:
         with self.assertRaises(ValueError):
             set_active_model("missing-model")

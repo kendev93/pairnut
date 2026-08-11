@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime
+import math
+import re
 from typing import Any
 
 from .connection import db_connection
+
+
+_VALID_SERIAL_MODES = {"manual", "auto"}
+_VALID_DEFECT_LEVELS = {"none", "light", "medium", "heavy"}
+_CODE_PREFIX_PATTERN = re.compile(r"^[A-Z0-9]+(?:-[A-Z0-9]+)*$")
 
 
 def now_str() -> str:
@@ -23,7 +30,54 @@ def row_to_dict(row) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def validate_variety_input(name: str, code_prefix: str, tolerance_mm: float) -> tuple[str, str, float]:
+    normalized_name = name.strip() if isinstance(name, str) else ""
+    normalized_prefix = code_prefix.strip().upper() if isinstance(code_prefix, str) else ""
+    if not normalized_name:
+        raise ValueError("品种名称不能为空。")
+    if not _CODE_PREFIX_PATTERN.fullmatch(normalized_prefix):
+        raise ValueError("编号前缀只能包含字母、数字和连字符。")
+    normalized_tolerance = _positive_finite_number(tolerance_mm, "统一偏差")
+    return normalized_name, normalized_prefix, normalized_tolerance
+
+
+def validate_walnut_input(data: dict[str, Any]) -> dict[str, Any]:
+    serial_mode = data.get("serial_mode")
+    if serial_mode not in _VALID_SERIAL_MODES:
+        raise ValueError("编号方式无效。")
+
+    serial_no = data.get("serial_no")
+    if not isinstance(serial_no, str) or not serial_no.strip():
+        raise ValueError("核桃编号不能为空。")
+
+    defect_level = data.get("defect_level")
+    if defect_level not in _VALID_DEFECT_LEVELS:
+        raise ValueError("瑕疵等级无效。")
+
+    return {
+        "serial_mode": serial_mode,
+        "serial_no": serial_no.strip(),
+        "edge_mm": _positive_finite_number(data.get("edge_mm"), "边尺寸"),
+        "belly_mm": _positive_finite_number(data.get("belly_mm"), "肚尺寸"),
+        "height_mm": _positive_finite_number(data.get("height_mm"), "高度"),
+        "weight_g": _positive_finite_number(data.get("weight_g"), "克重"),
+        "defect_level": defect_level,
+        "notes": data.get("notes"),
+    }
+
+
+def _positive_finite_number(value: Any, field_name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name}必须是有效数字。") from exc
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{field_name}必须大于 0。")
+    return number
+
+
 def create_variety(name: str, code_prefix: str, tolerance_mm: float = 1.0) -> int:
+    name, code_prefix, tolerance_mm = validate_variety_input(name, code_prefix, tolerance_mm)
     timestamp = now_str()
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -32,12 +86,13 @@ def create_variety(name: str, code_prefix: str, tolerance_mm: float = 1.0) -> in
             INSERT INTO varieties (name, code_prefix, tolerance_mm, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (name.strip(), code_prefix.strip().upper(), tolerance_mm, timestamp, timestamp),
+            (name, code_prefix, tolerance_mm, timestamp, timestamp),
         )
         return int(cursor.lastrowid)
 
 
 def update_variety(variety_id: int, name: str, code_prefix: str, tolerance_mm: float) -> None:
+    name, code_prefix, tolerance_mm = validate_variety_input(name, code_prefix, tolerance_mm)
     with db_connection() as conn:
         conn.execute(
             """
@@ -45,7 +100,7 @@ def update_variety(variety_id: int, name: str, code_prefix: str, tolerance_mm: f
             SET name = ?, code_prefix = ?, tolerance_mm = ?, updated_at = ?
             WHERE id = ?
             """,
-            (name.strip(), code_prefix.strip().upper(), tolerance_mm, now_str(), variety_id),
+            (name, code_prefix, tolerance_mm, now_str(), variety_id),
         )
 
 
@@ -67,6 +122,7 @@ def list_varieties() -> list[dict[str, Any]]:
 
 
 def create_walnut(data: dict[str, Any]) -> int:
+    data = {**data, **validate_walnut_input(data)}
     timestamp = now_str()
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -81,7 +137,7 @@ def create_walnut(data: dict[str, Any]) -> int:
             (
                 data["variety_id"],
                 data["serial_mode"],
-                data["serial_no"].strip(),
+                data["serial_no"],
                 data["edge_mm"],
                 data["belly_mm"],
                 data["height_mm"],
@@ -96,6 +152,7 @@ def create_walnut(data: dict[str, Any]) -> int:
 
 
 def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
+    data = {**data, **validate_walnut_input(data)}
     with db_connection() as conn:
         conn.execute(
             """
@@ -106,7 +163,7 @@ def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
             """,
             (
                 data["serial_mode"],
-                data["serial_no"].strip(),
+                data["serial_no"],
                 data["edge_mm"],
                 data["belly_mm"],
                 data["height_mm"],

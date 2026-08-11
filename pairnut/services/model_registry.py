@@ -73,7 +73,11 @@ def _read_config() -> dict[str, Any]:
     path = model_config_path()
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    return config if isinstance(config, dict) else {}
 
 
 def _write_config(config: dict[str, Any]) -> None:

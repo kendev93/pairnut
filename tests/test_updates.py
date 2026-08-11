@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from pairnut.services.updates import LATEST_RELEASE_URL, check_for_update, is_newer_version
+from pairnut.ui.views import UpdateCheckWorker
 
 
 class _Response:
@@ -52,6 +53,26 @@ class UpdateTests(unittest.TestCase):
 
         self.assertFalse(info.has_update)
         self.assertIsNotNone(info.error)
+
+    def test_check_for_update_handles_non_object_json(self) -> None:
+        with patch("pairnut.services.updates.urlopen", return_value=_Response(b"[]")):
+            info = check_for_update(current_version="0.1.0", release_api_url="https://example.com/api")
+
+        self.assertFalse(info.has_update)
+        self.assertEqual(info.latest_version, None)
+        self.assertIsNotNone(info.error)
+
+    def test_update_worker_emits_error_when_check_unexpectedly_fails(self) -> None:
+        results = []
+        worker = UpdateCheckWorker()
+        worker.finished.connect(results.append)
+
+        with patch("pairnut.ui.views.check_for_update", side_effect=RuntimeError("unexpected")):
+            worker.run()
+
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].has_update)
+        self.assertEqual(results[0].error, "unexpected")
 
 
 if __name__ == "__main__":

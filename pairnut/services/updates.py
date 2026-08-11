@@ -53,7 +53,9 @@ def check_for_update(
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            if not isinstance(payload, dict):
+                raise ValueError("release payload must be a JSON object")
+    except (HTTPError, URLError, TimeoutError, OSError, UnicodeError, TypeError, ValueError) as exc:
         return UpdateInfo(
             current_version=current_version,
             latest_version=None,

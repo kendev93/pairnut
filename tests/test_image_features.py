@@ -3,12 +3,17 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from pathlib import Path
+
+import cv2
+import numpy as np
 
 from pairnut.database import repositories
 from pairnut.database.schema import init_database
 from pairnut.services.image_features import (
     OPENCV_FEATURE_VERSION,
     cosine_similarity,
+    extract_opencv_features,
     serialize_vector,
     walnut_image_similarity,
 )
@@ -55,6 +60,14 @@ class ImageFeatureTests(unittest.TestCase):
     def test_cosine_similarity_scores_identical_vectors_as_one(self) -> None:
         self.assertEqual(cosine_similarity([1.0, 0.0], [1.0, 0.0]), 1.0)
         self.assertEqual(cosine_similarity([1.0, 0.0], [0.0, 1.0]), 0.0)
+
+    def test_shape_feature_vector_has_stable_length_without_contours(self) -> None:
+        image_path = Path(self.tempdir.name) / "blank.jpg"
+        cv2.imwrite(str(image_path), np.zeros((32, 32, 3), dtype=np.uint8))
+
+        feature = extract_opencv_features(image_path)
+
+        self.assertEqual(len(feature.shape_vector), 5)
 
     def test_walnut_image_similarity_uses_matching_faces(self) -> None:
         self._store_feature(self.w1, 1, [1.0, 0.0, 0.0])

@@ -80,3 +80,39 @@ class SchemaTests(unittest.TestCase):
             repositories.create_variety("狮子头", "SZT2", 1.0)
         with self.assertRaises(Exception):
             repositories.create_variety("官帽", "SZT", 1.0)
+
+    def test_variety_input_is_validated(self) -> None:
+        with self.assertRaises(ValueError):
+            repositories.create_variety("", "SZT", 1.0)
+        with self.assertRaises(ValueError):
+            repositories.create_variety("狮子头", "", 1.0)
+        with self.assertRaises(ValueError):
+            repositories.create_variety("狮子头", "SZ T", 1.0)
+        with self.assertRaises(ValueError):
+            repositories.create_variety("狮子头", "SZT", 0.0)
+
+    def test_walnut_input_is_validated(self) -> None:
+        variety_id = repositories.create_variety("狮子头", "SZT", 1.0)
+        data = {
+            "variety_id": variety_id,
+            "serial_mode": "manual",
+            "serial_no": "SZT-0001",
+            "edge_mm": 40.0,
+            "belly_mm": 42.0,
+            "height_mm": 38.0,
+            "weight_g": 52.0,
+            "defect_level": "none",
+            "notes": None,
+        }
+
+        for field in ("edge_mm", "belly_mm", "height_mm", "weight_g"):
+            invalid = {**data, field: 0.0}
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                repositories.create_walnut(invalid)
+
+        with self.assertRaises(ValueError):
+            repositories.create_walnut({**data, "serial_no": "   "})
+        with self.assertRaises(ValueError):
+            repositories.create_walnut({**data, "serial_mode": "invalid"})
+        with self.assertRaises(ValueError):
+            repositories.create_walnut({**data, "defect_level": "invalid"})
