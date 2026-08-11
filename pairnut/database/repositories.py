@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .connection import db_connection
@@ -15,7 +15,7 @@ _CODE_PREFIX_PATTERN = re.compile(r"^[A-Z0-9]+(?:-[A-Z0-9]+)*$")
 
 
 def now_str() -> str:
-    return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def normalize_pair(walnut_id_1: int, walnut_id_2: int) -> tuple[int, int]:
