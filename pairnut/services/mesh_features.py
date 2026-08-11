@@ -353,6 +353,8 @@ def mesh_similarity_from_features(
 ) -> WalnutMeshSimilarity | None:
     if not base_features or not candidate_features:
         return None
+    if _normalized_feature_vectors(base_features[0]) is None or _normalized_feature_vectors(candidate_features[0]) is None:
+        return None
     return WalnutMeshSimilarity(score=feature_similarity(base_features[0], candidate_features[0]))
 
 

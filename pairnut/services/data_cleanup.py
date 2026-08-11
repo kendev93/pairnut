@@ -59,6 +59,8 @@ def delete_variety_data(variety_id: int) -> bool:
     """Delete a variety, its walnuts, and all locally stored assets."""
     if repositories.get_variety(variety_id) is None:
         return False
+    if repositories.list_locked_pairs(variety_id=variety_id, active_only=True):
+        raise ValueError("该品种存在已锁定配对，请先解除锁定。")
 
     image_paths: list[str] = []
     mesh_paths: list[str] = []

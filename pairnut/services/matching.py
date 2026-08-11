@@ -17,7 +17,7 @@ from .mesh_features import (
     WalnutMeshSimilarity,
     mesh_similarity_from_features,
 )
-from .scoring import build_score, within_tolerance
+from .scoring import MIN_RECOMMENDATION_SCORE, build_score, within_tolerance
 
 
 DEFAULT_CANDIDATE_LIMIT = 3
@@ -57,6 +57,18 @@ def _validate_screening_multiplier(multiplier: float) -> float:
         raise ValueError("screening multiplier must be a positive finite number.") from exc
     if not math.isfinite(value) or value <= 0:
         raise ValueError("screening multiplier must be a positive finite number.")
+    return value
+
+
+def _validate_minimum_score(minimum_score: float | None) -> float | None:
+    if minimum_score is None:
+        return None
+    try:
+        value = float(minimum_score)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("minimum_score must be finite or None.") from exc
+    if not math.isfinite(value):
+        raise ValueError("minimum_score must be finite or None.")
     return value
 
 
@@ -202,6 +214,7 @@ def _candidate_from_pair(
         image_base_faces=image_similarity.base_faces if image_similarity else 0,
         image_candidate_faces=image_similarity.candidate_faces if image_similarity else 0,
         mesh_similarity=mesh_similarity.score if mesh_similarity else None,
+        is_strict_match=within_tolerance(base, candidate, tolerance_mm),
     )
 
 
@@ -209,6 +222,7 @@ def _get_candidates_from_snapshot(
     walnut: dict,
     snapshot: _MatchingSnapshot,
     limit: int | None,
+    minimum_score: float | None,
     screening_multiplier: float,
     evidence_cache: dict[tuple[int, int], _PairEvidence],
 ) -> list[CandidateMatch]:
@@ -234,7 +248,10 @@ def _get_candidates_from_snapshot(
             snapshot,
             evidence_cache,
         )
-        candidates.append(_candidate_from_pair(walnut, other, tolerance_mm, evidence))
+        candidate = _candidate_from_pair(walnut, other, tolerance_mm, evidence)
+        if minimum_score is not None and candidate.total_score < minimum_score:
+            continue
+        candidates.append(candidate)
 
     candidates.sort(key=lambda item: (-item.total_score, item.weight_diff, item.serial_no))
     return candidates if limit is None else candidates[:limit]
@@ -244,9 +261,11 @@ def get_candidates_for_walnut(
     walnut_id: int,
     limit: int | None = DEFAULT_CANDIDATE_LIMIT,
     screening_multiplier: float = DEFAULT_SCREENING_TOLERANCE_MULTIPLIER,
+    minimum_score: float | None = None,
 ) -> list[CandidateMatch]:
     normalized_limit = _validate_limit(limit)
     normalized_multiplier = _validate_screening_multiplier(screening_multiplier)
+    normalized_minimum_score = _validate_minimum_score(minimum_score)
     walnut = repositories.get_walnut(walnut_id)
     if walnut is None or walnut["is_locked"]:
         return []
@@ -263,6 +282,7 @@ def get_candidates_for_walnut(
         snapshot_walnut,
         snapshot,
         normalized_limit,
+        normalized_minimum_score,
         normalized_multiplier,
         {},
     )
@@ -272,9 +292,11 @@ def get_candidates_for_variety(
     variety_id: int,
     limit: int | None = DEFAULT_CANDIDATE_LIMIT,
     screening_multiplier: float = DEFAULT_SCREENING_TOLERANCE_MULTIPLIER,
+    minimum_score: float | None = None,
 ) -> dict[int, list[CandidateMatch]]:
     normalized_limit = _validate_limit(limit)
     normalized_multiplier = _validate_screening_multiplier(screening_multiplier)
+    normalized_minimum_score = _validate_minimum_score(minimum_score)
     snapshot = _load_matching_snapshot(variety_id)
     evidence_cache: dict[tuple[int, int], _PairEvidence] = {}
     return {
@@ -282,6 +304,7 @@ def get_candidates_for_variety(
             walnut,
             snapshot,
             normalized_limit,
+            normalized_minimum_score,
             normalized_multiplier,
             evidence_cache,
         )
@@ -289,9 +312,55 @@ def get_candidates_for_variety(
     }
 
 
+def get_matching_view_data(
+    variety_id: int,
+    limit: int | None = DEFAULT_CANDIDATE_LIMIT,
+    minimum_score: float | None = MIN_RECOMMENDATION_SCORE,
+    screening_multiplier: float = DEFAULT_SCREENING_TOLERANCE_MULTIPLIER,
+) -> tuple[list[dict], dict[int, list[CandidateMatch]]]:
+    """Load the walnut rows and candidate board from one matching snapshot."""
+    normalized_limit = _validate_limit(limit)
+    normalized_minimum_score = _validate_minimum_score(minimum_score)
+    normalized_multiplier = _validate_screening_multiplier(screening_multiplier)
+    snapshot = _load_matching_snapshot(variety_id)
+    evidence_cache: dict[tuple[int, int], _PairEvidence] = {}
+    candidates = {
+        int(walnut["id"]): _get_candidates_from_snapshot(
+            walnut,
+            snapshot,
+            normalized_limit,
+            normalized_minimum_score,
+            normalized_multiplier,
+            evidence_cache,
+        )
+        for walnut in snapshot.walnuts
+    }
+    return snapshot.walnuts, candidates
+
+
+def lock_candidate_pair(
+    variety_id: int,
+    walnut_id_1: int,
+    walnut_id_2: int,
+    minimum_score: float = MIN_RECOMMENDATION_SCORE,
+) -> int:
+    """Lock only a currently recommended, strict-tolerance candidate pair."""
+    candidates = get_candidates_for_walnut(
+        walnut_id_1,
+        limit=None,
+        minimum_score=minimum_score,
+    )
+    candidate = next((item for item in candidates if item.walnut_id == walnut_id_2), None)
+    if candidate is None:
+        raise ValueError("该配对未达到当前推荐门槛。")
+    if not candidate.is_strict_match:
+        raise ValueError("该配对超出品种统一偏差，不能直接锁定。")
+    return repositories.lock_pair(variety_id, walnut_id_1, walnut_id_2)
+
+
 def get_non_overlapping_pairs(
     variety_id: int,
-    minimum_score: float = 0.0,
+    minimum_score: float = MIN_RECOMMENDATION_SCORE,
     screening_multiplier: float = DEFAULT_SCREENING_TOLERANCE_MULTIPLIER,
 ) -> list[PairMatch]:
     """Return deterministic, highest-score-first pairs without reused walnuts.
@@ -299,12 +368,8 @@ def get_non_overlapping_pairs(
     The existing candidate board intentionally shows repeated candidates. This
     separate helper is for workflows that need a one-to-one recommendation.
     """
-    try:
-        normalized_minimum_score = float(minimum_score)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("minimum_score must be finite.") from exc
-    if not math.isfinite(normalized_minimum_score):
-        raise ValueError("minimum_score must be finite.")
+    normalized_minimum_score = _validate_minimum_score(minimum_score)
+    assert normalized_minimum_score is not None
     candidates_by_walnut = get_candidates_for_variety(
         variety_id,
         limit=None,

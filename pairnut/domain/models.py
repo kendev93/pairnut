@@ -36,6 +36,7 @@ class CandidateMatch:
     image_base_faces: int = 0
     image_candidate_faces: int = 0
     mesh_similarity: float | None = None
+    is_strict_match: bool = True
 
 
 @dataclass(frozen=True, slots=True)

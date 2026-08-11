@@ -12,7 +12,9 @@ from pairnut.services.matching import (
     _combine_optional_evidence,
     get_candidates_for_variety,
     get_candidates_for_walnut,
+    get_matching_view_data,
     get_non_overlapping_pairs,
+    lock_candidate_pair,
 )
 from pairnut.services.mesh_features import MESH_FEATURE_VERSION
 
@@ -110,6 +112,19 @@ class MatchingTests(unittest.TestCase):
         result = get_candidates_for_walnut(self.w1, limit=10)
 
         self.assertIn(walnut_id, [item.walnut_id for item in result])
+        candidate = next(item for item in result if item.walnut_id == walnut_id)
+        self.assertFalse(candidate.is_strict_match)
+
+    def test_minimum_score_filters_weak_recommendations(self) -> None:
+        self.assertEqual(get_candidates_for_walnut(self.w1, minimum_score=101.0), [])
+
+    def test_matching_view_data_reuses_one_walnut_snapshot(self) -> None:
+        with patch.object(repositories, "list_walnuts", wraps=repositories.list_walnuts) as list_walnuts:
+            walnuts, candidates = get_matching_view_data(self.variety_id)
+
+        self.assertEqual(len(walnuts), 4)
+        self.assertIn(self.w1, candidates)
+        self.assertEqual(list_walnuts.call_count, 1)
 
     def test_partial_optional_evidence_has_lower_influence_than_full_coverage(self) -> None:
         full_coverage = _combine_optional_evidence(80.0, [100.0], [1.0])
@@ -144,6 +159,54 @@ class MatchingTests(unittest.TestCase):
         result = get_candidates_for_walnut(self.w1)
         candidate_ids = [item.walnut_id for item in result]
         self.assertNotIn(self.w2, candidate_ids)
+
+    def test_blacklisted_pair_cannot_be_locked_and_can_be_removed(self) -> None:
+        blacklist_id = repositories.create_blacklist_pair(self.variety_id, self.w1, self.w2, reason="人工排除")
+
+        with self.assertRaises(ValueError):
+            repositories.lock_pair(self.variety_id, self.w1, self.w2)
+
+        self.assertTrue(repositories.delete_blacklist_pair(blacklist_id))
+        repositories.lock_pair(self.variety_id, self.w1, self.w2)
+
+    def test_locked_walnut_cannot_be_edited(self) -> None:
+        repositories.lock_pair(self.variety_id, self.w1, self.w2)
+
+        with self.assertRaises(ValueError):
+            repositories.update_walnut(
+                self.w1,
+                {
+                    "serial_mode": "manual",
+                    "serial_no": "SZT-UPDATED",
+                    "edge_mm": 40.0,
+                    "belly_mm": 42.0,
+                    "height_mm": 38.0,
+                    "weight_g": 52.0,
+                    "defect_level": "none",
+                    "notes": None,
+                },
+            )
+
+    def test_lock_candidate_pair_rejects_screening_only_candidate(self) -> None:
+        walnut_id = repositories.create_walnut(
+            {
+                "variety_id": self.variety_id,
+                "serial_mode": "manual",
+                "serial_no": "SZT-0005",
+                "edge_mm": 41.1,
+                "belly_mm": 42.0,
+                "height_mm": 38.0,
+                "weight_g": 52.0,
+                "defect_level": "none",
+                "notes": None,
+            }
+        )
+
+        with self.assertRaises(ValueError):
+            lock_candidate_pair(self.variety_id, self.w1, walnut_id)
+
+        with self.assertRaises(ValueError):
+            repositories.lock_pair(self.variety_id, self.w1, walnut_id)
 
     def test_lock_pair_rejects_walnuts_from_different_varieties(self) -> None:
         other_variety_id = repositories.create_variety("官帽", "GM", 1.0)

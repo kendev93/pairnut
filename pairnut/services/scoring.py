@@ -14,6 +14,19 @@ DEFECT_PENALTIES = {
     DefectLevel.HEAVY.value: 20.0,
 }
 
+MIN_RECOMMENDATION_SCORE = 70.0
+HIGH_RECOMMENDATION_SCORE = 85.0
+
+
+def recommendation_label(score: float) -> str:
+    """Return a user-facing explanation for a recommendation score."""
+    normalized_score = float(score)
+    if normalized_score >= HIGH_RECOMMENDATION_SCORE:
+        return "优先推荐"
+    if normalized_score >= MIN_RECOMMENDATION_SCORE:
+        return "可人工确认"
+    return "不建议"
+
 
 def clamp(value: float, minimum: float = 0.0, maximum: float = 100.0) -> float:
     return max(minimum, min(maximum, value))

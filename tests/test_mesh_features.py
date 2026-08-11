@@ -14,6 +14,7 @@ from pairnut.services.mesh_features import (
     extract_mesh_features,
     feature_similarity,
     import_walnut_mesh,
+    mesh_similarity_from_features,
     walnut_mesh_similarity,
 )
 
@@ -86,6 +87,8 @@ class MeshFeatureTests(unittest.TestCase):
 
         features = repositories.list_walnut_mesh_features(self.w1, MESH_FEATURE_VERSION)
         self.assertEqual(len(features), 1)
+        meshes_by_walnut = repositories.list_walnut_meshes_for_variety(self.variety_id)
+        self.assertEqual(meshes_by_walnut[self.w1]["original_filename"], "NJS-01.obj")
 
     def test_walnut_mesh_similarity_scores_identical_meshes_highly(self) -> None:
         import_walnut_mesh(self.w1, self._write_obj("NJS-01.obj"))
@@ -120,6 +123,14 @@ class MeshFeatureTests(unittest.TestCase):
         }
 
         self.assertEqual(feature_similarity(left, right), 0.0)
+
+    def test_malformed_mesh_feature_is_ignored_without_crashing(self) -> None:
+        result = mesh_similarity_from_features(
+            [{"dimensions_vector": "not-json", "shape_vector": "[1,2,3,4,5,6,7,8]"}],
+            [{"dimensions_vector": "[1,2,3]", "shape_vector": "[1,2,3,4,5,6,7,8]"}],
+        )
+
+        self.assertIsNone(result)
 
     def test_unsupported_mesh_suffix_is_rejected(self) -> None:
         source = self._write_obj("NJS-01.glb")

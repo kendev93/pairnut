@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from pairnut.services.scoring import build_score, within_tolerance
+from pairnut.services.scoring import build_score, recommendation_label, within_tolerance
 
 
 BASE_WALNUT = {
@@ -43,3 +43,8 @@ class ScoringTests(unittest.TestCase):
         clean_score = build_score(BASE_WALNUT, clean, 1.0)
         defect_score = build_score(BASE_WALNUT, medium_defect, 1.0)
         self.assertGreater(clean_score["total_score"], defect_score["total_score"])
+
+    def test_recommendation_label_explains_score_band(self) -> None:
+        self.assertEqual(recommendation_label(90.0), "优先推荐")
+        self.assertEqual(recommendation_label(75.0), "可人工确认")
+        self.assertEqual(recommendation_label(60.0), "不建议")

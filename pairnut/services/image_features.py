@@ -99,7 +99,12 @@ def serialize_vector(vector: Sequence[float]) -> str:
 
 def deserialize_vector(value: str) -> list[float]:
     loaded = json.loads(value)
-    return [float(item) for item in loaded]
+    if not isinstance(loaded, list):
+        raise ValueError("feature vector must be a JSON array")
+    vector = [float(item) for item in loaded]
+    if not all(math.isfinite(item) for item in vector):
+        raise ValueError("feature vector must contain finite numbers")
+    return vector
 
 
 def store_opencv_features(image_id: int, image_path: Path) -> None:
@@ -147,20 +152,43 @@ def feature_similarity(left: dict, right: dict) -> float:
     return ((color_score * 0.4) + (texture_score * 0.4) + (current_shape_similarity * 0.2)) * 100.0
 
 
+def _safe_feature_similarity(left: dict, right: dict) -> float | None:
+    try:
+        return feature_similarity(left, right)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def image_similarity_from_features(
     base_features: Sequence[dict],
     candidate_features: Sequence[dict],
 ) -> WalnutImageSimilarity | None:
-    base_by_face = {int(feature["face_no"]): feature for feature in base_features}
-    candidate_by_face = {int(feature["face_no"]): feature for feature in candidate_features}
+    base_by_face: dict[int, dict] = {}
+    for feature in base_features:
+        try:
+            base_by_face[int(feature["face_no"])] = feature
+        except (KeyError, TypeError, ValueError):
+            continue
+    candidate_by_face: dict[int, dict] = {}
+    for feature in candidate_features:
+        try:
+            candidate_by_face[int(feature["face_no"])] = feature
+        except (KeyError, TypeError, ValueError):
+            continue
     matched_faces = sorted(set(base_by_face) & set(candidate_by_face))
     if not matched_faces:
         return None
 
-    score = sum(feature_similarity(base_by_face[face_no], candidate_by_face[face_no]) for face_no in matched_faces)
+    scores = [
+        score
+        for face_no in matched_faces
+        if (score := _safe_feature_similarity(base_by_face[face_no], candidate_by_face[face_no])) is not None
+    ]
+    if not scores:
+        return None
     return WalnutImageSimilarity(
-        score=score / len(matched_faces),
-        matched_faces=len(matched_faces),
+        score=sum(scores) / len(scores),
+        matched_faces=len(scores),
         base_faces=len(base_by_face),
         candidate_faces=len(candidate_by_face),
     )

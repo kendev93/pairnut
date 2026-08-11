@@ -78,6 +78,9 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(len(repositories.list_walnut_image_features(self.walnut_id)), 1)
         extract_features.assert_called_once_with(source)
 
+        images_by_walnut = repositories.list_walnut_images_for_variety(self.variety_id)
+        self.assertEqual([row["face_no"] for row in images_by_walnut[self.walnut_id]], [1])
+
     def test_import_walnut_images_replaces_existing_face(self) -> None:
         first = Path(self.tempdir.name) / "NJS-01-2.JPG"
         second = Path(self.tempdir.name) / "NJS-01-2.PNG"

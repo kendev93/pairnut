@@ -14,6 +14,7 @@ from pairnut.services.image_features import (
     OPENCV_FEATURE_VERSION,
     cosine_similarity,
     extract_opencv_features,
+    image_similarity_from_features,
     serialize_vector,
     walnut_image_similarity,
 )
@@ -82,3 +83,19 @@ class ImageFeatureTests(unittest.TestCase):
         self.assertEqual(result.base_faces, 2)
         self.assertEqual(result.candidate_faces, 2)
         self.assertGreater(result.score, 99.0)
+
+    def test_malformed_image_feature_is_ignored_without_crashing(self) -> None:
+        result = image_similarity_from_features(
+            [{"face_no": 1, "color_histogram": "not-json", "texture_vector": "[1]", "shape_vector": "[1]"}],
+            [{"face_no": 1, "color_histogram": "[1]", "texture_vector": "[1]", "shape_vector": "[1]"}],
+        )
+
+        self.assertIsNone(result)
+
+    def test_non_finite_image_feature_is_ignored_without_crashing(self) -> None:
+        result = image_similarity_from_features(
+            [{"face_no": 1, "color_histogram": "[NaN]", "texture_vector": "[1]", "shape_vector": "[1]"}],
+            [{"face_no": 1, "color_histogram": "[1]", "texture_vector": "[1]", "shape_vector": "[1]"}],
+        )
+
+        self.assertIsNone(result)

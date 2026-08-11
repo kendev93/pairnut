@@ -81,6 +81,17 @@ class DataCleanupTests(unittest.TestCase):
         self.assertEqual(repositories.get_active_lock_for_walnut(partner_id)["id"], pair_id)
         self.assertEqual(repositories.get_walnut(partner_id)["is_locked"], 1)
 
+    def test_delete_variety_with_locked_pair_is_rejected(self) -> None:
+        partner_id = self._create_walnut("NJS-02")
+        repositories.lock_pair(self.variety_id, self.walnut_id, partner_id)
+
+        with self.assertRaises(ValueError):
+            delete_variety_data(self.variety_id)
+
+        self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
+        self.assertIsNotNone(repositories.get_walnut(partner_id))
+        self.assertEqual(len(repositories.list_locked_pairs(self.variety_id)), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

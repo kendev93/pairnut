@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -47,8 +48,9 @@ from ..database import get_data_dir, get_images_dir, get_models_dir, repositorie
 from ..domain.models import DefectLevel, SerialMode
 from ..services.data_cleanup import delete_variety_data, delete_walnut_data
 from ..services.images import delete_walnut_image, import_walnut_images
-from ..services.matching import get_candidates_for_variety
+from ..services.matching import get_matching_view_data, lock_candidate_pair
 from ..services.mesh_features import import_walnut_mesh
+from ..services.scoring import MIN_RECOMMENDATION_SCORE, recommendation_label
 from ..services.model_registry import (
     can_download_model,
     delete_model,
@@ -409,16 +411,21 @@ class ClickableImageLabel(QLabel):
         super().mousePressEvent(event)
 
 
-def create_walnut_image_strip(walnut_id: int, thumbnail_size: int = 54) -> QWidget:
+def create_walnut_image_strip(
+    walnut_id: int,
+    thumbnail_size: int = 54,
+    images: list[dict] | None = None,
+) -> QWidget:
     widget = QWidget()
     layout = QHBoxLayout(widget)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(6)
 
-    images = {int(image["face_no"]): image for image in repositories.list_walnut_images(walnut_id)}
+    image_rows = images if images is not None else repositories.list_walnut_images(walnut_id)
+    images_by_face = {int(image["face_no"]): image for image in image_rows}
     image_root = get_images_dir()
     for face_no in range(1, 7):
-        image = images.get(face_no)
+        image = images_by_face.get(face_no)
         image_path = image_root / image["stored_path"] if image else None
         if image_path and image_path.exists():
             label = ClickableImageLabel(walnut_id, face_no, image_path, f'第 {face_no} 面：{image["original_filename"]}')
@@ -1018,7 +1025,11 @@ class VarietyTab(QWidget):
             self.window.show_error(f"更新品种失败: {exc}")
 
     def delete_variety(self, variety_id: int) -> None:
-        if QMessageBox.question(self, "删除品种", "删除品种会同时删除该品种下的核桃数据，继续吗？") != QMessageBox.Yes:
+        if QMessageBox.question(
+            self,
+            "删除品种",
+            "删除品种会同时删除该品种下的核桃数据；如存在已锁定配对，需要先解除锁定。继续吗？",
+        ) != QMessageBox.Yes:
             return
         try:
             delete_variety_data(variety_id)
@@ -1133,10 +1144,13 @@ class WalnutTab(VarietyScopedWidget):
         self.refresh_variety_combo()
         variety_id = self.window.selected_variety_id
         walnuts = repositories.list_walnuts(variety_id=variety_id, include_locked=True) if variety_id else []
+        images_by_walnut = repositories.list_walnut_images_for_variety(variety_id) if variety_id else {}
+        meshes_by_walnut = repositories.list_walnut_meshes_for_variety(variety_id) if variety_id else {}
         self.table.setRowCount(len(walnuts))
         for row, walnut in enumerate(walnuts):
-            image_count = len(repositories.list_walnut_images(int(walnut["id"])))
-            mesh = repositories.get_walnut_mesh(int(walnut["id"]))
+            walnut_id = int(walnut["id"])
+            images = images_by_walnut.get(walnut_id, [])
+            mesh = meshes_by_walnut.get(walnut_id)
             values = [
                 walnut["serial_no"],
                 f'{walnut["edge_mm"]:.2f}',
@@ -1144,7 +1158,7 @@ class WalnutTab(VarietyScopedWidget):
                 f'{walnut["height_mm"]:.2f}',
                 f'{walnut["weight_g"]:.2f}',
                 walnut["defect_level"],
-                f"{image_count} / 6",
+                f"{len(images)} / 6",
                 "已导入" if mesh else "未导入",
                 "已锁定" if walnut["is_locked"] else "未锁定",
             ]
@@ -1154,7 +1168,7 @@ class WalnutTab(VarietyScopedWidget):
                 if column == 0:
                     item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
                 self.table.setItem(row, column, item)
-            self.table.setCellWidget(row, 6, create_walnut_image_strip(int(walnut["id"]), 42))
+            self.table.setCellWidget(row, 6, create_walnut_image_strip(walnut_id, 42, images))
         self.table.resizeRowsToContents()
         for row in range(self.table.rowCount()):
             self.table.setRowHeight(row, max(self.table.rowHeight(row), 54))
@@ -1178,10 +1192,13 @@ class WalnutTab(VarietyScopedWidget):
             self.table.selectRow(row_to_select)
 
     def _sync_action_state(self) -> None:
-        has_selection = self._selected_walnut_id() is not None
-        self.edit_button.setEnabled(has_selection)
-        self.delete_button.setEnabled(has_selection)
-        self.import_mesh_button.setEnabled(has_selection)
+        selected_id = self._selected_walnut_id()
+        selected = repositories.get_walnut(selected_id) if selected_id is not None else None
+        has_selection = selected is not None
+        is_locked = bool(selected and selected["is_locked"])
+        self.edit_button.setEnabled(has_selection and not is_locked)
+        self.delete_button.setEnabled(has_selection and not is_locked)
+        self.import_mesh_button.setEnabled(has_selection and not is_locked)
         self.import_images_button.setEnabled(self.window.selected_variety_id is not None)
 
     def edit_selected_walnut(self) -> None:
@@ -1313,7 +1330,7 @@ class MatchingTab(VarietyScopedWidget):
         eyebrow.setProperty("role", "eyebrow")
         title = QLabel("候选配对看板")
         title.setProperty("role", "headline")
-        subtitle = QLabel("每颗核桃显示 3 个最高分候选，你可以锁定最满意的一对，或直接拉黑不合适的组合。")
+        subtitle = QLabel("每颗核桃最多显示 3 个达到推荐门槛的候选；超出严格偏差的候选只能人工确认，不能直接锁定。")
         subtitle.setProperty("role", "subtle")
         toolbar = QHBoxLayout()
         toolbar.addWidget(QLabel("当前品种"))
@@ -1323,6 +1340,9 @@ class MatchingTab(VarietyScopedWidget):
         refresh_button.setProperty("variant", "primary")
         refresh_button.clicked.connect(self.refresh)
         toolbar.addWidget(refresh_button)
+        blacklist_button = QPushButton("拉黑管理")
+        blacklist_button.clicked.connect(self.manage_blacklist)
+        toolbar.addWidget(blacklist_button)
         hero_layout.addWidget(eyebrow)
         hero_layout.addWidget(title)
         hero_layout.addWidget(subtitle)
@@ -1348,16 +1368,42 @@ class MatchingTab(VarietyScopedWidget):
             self.scroll_layout.addWidget(QLabel("请先创建并选中一个品种。"))
             return
 
-        candidates_by_walnut = get_candidates_for_variety(variety_id)
-        walnuts = repositories.list_walnuts(variety_id=variety_id, include_locked=True)
+        walnuts, candidates_by_walnut = get_matching_view_data(
+            variety_id,
+            minimum_score=MIN_RECOMMENDATION_SCORE,
+        )
         if not walnuts:
             self.scroll_layout.addWidget(QLabel("当前品种还没有核桃。"))
             return
 
-        for walnut in walnuts:
-            self.scroll_layout.addWidget(self._create_walnut_group(variety_id, walnut, candidates_by_walnut.get(walnut["id"], [])))
+        images_by_walnut = repositories.list_walnut_images_for_variety(variety_id)
+        walnuts_by_id = {int(walnut["id"]): walnut for walnut in walnuts}
+        locks_by_walnut: dict[int, dict] = {}
+        for lock in repositories.list_locked_pairs(variety_id=variety_id, active_only=True):
+            locks_by_walnut[int(lock["walnut_id_1"])] = lock
+            locks_by_walnut[int(lock["walnut_id_2"])] = lock
 
-    def _create_walnut_group(self, variety_id: int, walnut: dict, candidates: list) -> QGroupBox:
+        for walnut in walnuts:
+            self.scroll_layout.addWidget(
+                self._create_walnut_group(
+                    variety_id,
+                    walnut,
+                    candidates_by_walnut.get(walnut["id"], []),
+                    images_by_walnut,
+                    locks_by_walnut,
+                    walnuts_by_id,
+                )
+            )
+
+    def _create_walnut_group(
+        self,
+        variety_id: int,
+        walnut: dict,
+        candidates: list,
+        images_by_walnut: dict[int, list[dict]],
+        locks_by_walnut: dict[int, dict],
+        walnuts_by_id: dict[int, dict],
+    ) -> QGroupBox:
         title = (
             f'{walnut["serial_no"]}   ·   '
             f'三维 {walnut["edge_mm"]:.2f}/{walnut["belly_mm"]:.2f}/{walnut["height_mm"]:.2f}   ·   '
@@ -1372,12 +1418,13 @@ class MatchingTab(VarietyScopedWidget):
         meta_row.addWidget(create_chip("已锁定" if walnut["is_locked"] else "可参与推荐", "#f6f0e5", "#7a6554"))
         meta_row.addStretch(1)
         layout.addLayout(meta_row)
-        layout.addWidget(create_walnut_image_strip(int(walnut["id"]), 58))
+        walnut_id = int(walnut["id"])
+        layout.addWidget(create_walnut_image_strip(walnut_id, 58, images_by_walnut.get(walnut_id, [])))
 
-        active_lock = repositories.get_active_lock_for_walnut(walnut["id"])
+        active_lock = locks_by_walnut.get(walnut_id)
         if active_lock:
-            partner_id = active_lock["walnut_id_2"] if active_lock["walnut_id_1"] == walnut["id"] else active_lock["walnut_id_1"]
-            partner = repositories.get_walnut(partner_id)
+            partner_id = active_lock["walnut_id_2"] if active_lock["walnut_id_1"] == walnut_id else active_lock["walnut_id_1"]
+            partner = walnuts_by_id.get(int(partner_id))
             lock_card = create_candidate_card()
             lock_layout = QVBoxLayout(lock_card)
             lock_layout.setContentsMargins(16, 14, 16, 14)
@@ -1389,7 +1436,13 @@ class MatchingTab(VarietyScopedWidget):
             lock_top_row.addWidget(unlock_button)
             lock_layout.addLayout(lock_top_row)
             if partner:
-                lock_layout.addWidget(create_walnut_image_strip(int(partner["id"]), 58))
+                lock_layout.addWidget(
+                    create_walnut_image_strip(
+                        int(partner["id"]),
+                        58,
+                        images_by_walnut.get(int(partner["id"]), []),
+                    )
+                )
             layout.addWidget(lock_card)
             return group
 
@@ -1397,15 +1450,28 @@ class MatchingTab(VarietyScopedWidget):
             empty_card = create_candidate_card()
             empty_layout = QVBoxLayout(empty_card)
             empty_layout.setContentsMargins(16, 14, 16, 14)
-            empty_layout.addWidget(QLabel("没有满足偏差条件的候选。"))
+            empty_layout.addWidget(QLabel("没有达到当前推荐门槛的候选。"))
             layout.addWidget(empty_card)
             return group
 
         for candidate in candidates:
-            layout.addWidget(self._create_candidate_card(variety_id, walnut["id"], candidate))
+            layout.addWidget(
+                self._create_candidate_card(
+                    variety_id,
+                    walnut_id,
+                    candidate,
+                    images_by_walnut.get(candidate.walnut_id, []),
+                )
+            )
         return group
 
-    def _create_candidate_card(self, variety_id: int, walnut_id: int, candidate) -> QFrame:
+    def _create_candidate_card(
+        self,
+        variety_id: int,
+        walnut_id: int,
+        candidate,
+        images: list[dict],
+    ) -> QFrame:
         card = create_candidate_card()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(16, 16, 16, 16)
@@ -1419,7 +1485,7 @@ class MatchingTab(VarietyScopedWidget):
         score_chip = create_chip(f"{candidate.total_score:.1f} 分", "#bc7b35", "white")
         top_row.addWidget(score_chip)
         card_layout.addLayout(top_row)
-        card_layout.addWidget(create_walnut_image_strip(candidate.walnut_id, 58))
+        card_layout.addWidget(create_walnut_image_strip(candidate.walnut_id, 58, images))
 
         metrics = QHBoxLayout()
         metrics.addWidget(create_metric("边差", f"{candidate.edge_diff:.2f}"))
@@ -1430,6 +1496,16 @@ class MatchingTab(VarietyScopedWidget):
         card_layout.addLayout(metrics)
 
         tags = QHBoxLayout()
+        label = recommendation_label(candidate.total_score)
+        label_colors = {
+            "优先推荐": ("#e7f1e5", "#35653b"),
+            "可人工确认": ("#f4ead7", "#80602d"),
+            "不建议": ("#f2e1df", "#8a4038"),
+        }
+        label_background, label_foreground = label_colors[label]
+        tags.addWidget(create_chip(label, label_background, label_foreground))
+        if not candidate.is_strict_match:
+            tags.addWidget(create_chip("超出严格偏差", "#f2e1df", "#8a4038"))
         tags.addWidget(create_chip(f'瑕疵 {candidate.defect_level}', "#efe4d4", "#6d5746"))
         tags.addWidget(create_chip(f'尺寸分 {candidate.dimension_score:.1f}', "#ecf1e8", "#4b6847"))
         tags.addWidget(create_chip(f'克重加分 {candidate.weight_bonus:.1f}', "#eef2f8", "#4f6480"))
@@ -1453,6 +1529,9 @@ class MatchingTab(VarietyScopedWidget):
         button_row = QHBoxLayout()
         lock_button = QPushButton("锁定")
         lock_button.setProperty("variant", "primary")
+        lock_button.setEnabled(candidate.is_strict_match)
+        if not candidate.is_strict_match:
+            lock_button.setToolTip("该候选只在放宽筛选窗口内，超出品种统一偏差，不能直接锁定。")
         lock_button.clicked.connect(lambda _=False, left_id=walnut_id, right_id=candidate.walnut_id: self._lock_pair(variety_id, left_id, right_id))
         blacklist_button = QPushButton("拉黑")
         blacklist_button.setProperty("variant", "danger")
@@ -1465,7 +1544,7 @@ class MatchingTab(VarietyScopedWidget):
 
     def _lock_pair(self, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
         try:
-            repositories.lock_pair(variety_id, walnut_id_1, walnut_id_2)
+            lock_candidate_pair(variety_id, walnut_id_1, walnut_id_2)
             self.window.show_message("配对已锁定")
             self.window.refresh_all()
         except Exception as exc:
@@ -1477,12 +1556,40 @@ class MatchingTab(VarietyScopedWidget):
         self.window.refresh_all()
 
     def _blacklist_pair(self, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
+        reason, accepted = QInputDialog.getText(self, "拉黑配对", "拉黑原因（可选）：")
+        if not accepted:
+            return
         try:
-            repositories.create_blacklist_pair(variety_id, walnut_id_1, walnut_id_2)
+            repositories.create_blacklist_pair(variety_id, walnut_id_1, walnut_id_2, reason=reason)
             self.window.show_message("已加入拉黑列表")
             self.window.refresh_all()
         except Exception as exc:
             self.window.show_error(f"拉黑失败: {exc}")
+
+    def manage_blacklist(self) -> None:
+        variety_id = self.window.selected_variety_id
+        if not variety_id:
+            self.window.show_error("请先创建并选中一个品种。")
+            return
+        blacklist = repositories.list_blacklist_pairs(variety_id=variety_id)
+        if not blacklist:
+            QMessageBox.information(self, "拉黑管理", "当前品种没有拉黑配对。")
+            return
+        labels = [
+            f'{item["serial_no_1"]} ↔ {item["serial_no_2"]}'
+            + (f'（{item["reason"]}）' if item["reason"] else "")
+            for item in blacklist
+        ]
+        selected, accepted = QInputDialog.getItem(self, "拉黑管理", "选择要移除的配对：", labels, 0, False)
+        if not accepted:
+            return
+        selected_index = labels.index(selected)
+        selected_item = blacklist[selected_index]
+        if QMessageBox.question(self, "移除拉黑", f"确认移除“{selected}”？") != QMessageBox.Yes:
+            return
+        if repositories.delete_blacklist_pair(int(selected_item["id"])):
+            self.window.show_message("已移除拉黑配对")
+            self.window.refresh_all()
 
 
 class PairNutMainWindow(QMainWindow):

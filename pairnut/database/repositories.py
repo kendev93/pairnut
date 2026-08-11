@@ -154,6 +154,15 @@ def create_walnut(data: dict[str, Any]) -> int:
 def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
     data = {**data, **validate_walnut_input(data)}
     with db_connection() as conn:
+        if conn.execute(
+            """
+            SELECT 1 FROM locked_pairs
+            WHERE is_active = 1 AND (walnut_id_1 = ? OR walnut_id_2 = ?)
+            LIMIT 1
+            """,
+            (walnut_id, walnut_id),
+        ).fetchone():
+            raise ValueError("已锁定的核桃不能编辑，请先解除锁定。")
         conn.execute(
             """
             UPDATE walnuts
@@ -338,6 +347,24 @@ def list_walnut_images(walnut_id: int) -> list[dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def list_walnut_images_for_variety(variety_id: int) -> dict[int, list[dict[str, Any]]]:
+    with db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT wi.*
+            FROM walnut_images wi
+            JOIN walnuts w ON w.id = wi.walnut_id
+            WHERE w.variety_id = ?
+            ORDER BY wi.walnut_id, wi.face_no
+            """,
+            (variety_id,),
+        ).fetchall()
+    result: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        result.setdefault(int(row["walnut_id"]), []).append(dict(row))
+    return result
+
+
 def list_walnut_image_features(walnut_id: int, feature_version: str | None = None) -> list[dict[str, Any]]:
     params: list[Any] = [walnut_id]
     version_clause = ""
@@ -465,6 +492,21 @@ def get_walnut_mesh(walnut_id: int) -> dict[str, Any] | None:
         return row_to_dict(row)
 
 
+def list_walnut_meshes_for_variety(variety_id: int) -> dict[int, dict[str, Any]]:
+    with db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT wm.*
+            FROM walnut_meshes wm
+            JOIN walnuts w ON w.id = wm.walnut_id
+            WHERE w.variety_id = ?
+            ORDER BY wm.walnut_id
+            """,
+            (variety_id,),
+        ).fetchall()
+    return {int(row["walnut_id"]): dict(row) for row in rows}
+
+
 def list_walnut_mesh_features(walnut_id: int, feature_version: str | None = None) -> list[dict[str, Any]]:
     params: list[Any] = [walnut_id]
     version_clause = ""
@@ -560,6 +602,31 @@ def lock_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int) -> int:
     with db_connection() as conn:
         cursor = conn.cursor()
         _validate_pair_variety(cursor, variety_id, left, right)
+        if cursor.execute(
+            """
+            SELECT 1 FROM pair_blacklist
+            WHERE walnut_id_1 = ? AND walnut_id_2 = ?
+            LIMIT 1
+            """,
+            (left, right),
+        ).fetchone():
+            raise ValueError("该配对已被拉黑，不能锁定。")
+        pair_rows = cursor.execute(
+            """
+            SELECT w.edge_mm, w.belly_mm, w.height_mm, v.tolerance_mm
+            FROM walnuts w
+            JOIN varieties v ON v.id = w.variety_id
+            WHERE w.id IN (?, ?)
+            ORDER BY w.id
+            """,
+            (left, right),
+        ).fetchall()
+        tolerance_mm = float(pair_rows[0]["tolerance_mm"])
+        if any(
+            abs(pair_rows[0][field] - pair_rows[1][field]) > tolerance_mm
+            for field in ("edge_mm", "belly_mm", "height_mm")
+        ):
+            raise ValueError("该配对超出品种统一偏差，不能锁定。")
         existing = cursor.execute(
             """
             SELECT id FROM locked_pairs
@@ -624,6 +691,16 @@ def create_blacklist_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int, r
     with db_connection() as conn:
         cursor = conn.cursor()
         _validate_pair_variety(cursor, variety_id, left, right)
+        if cursor.execute(
+            """
+            SELECT 1 FROM locked_pairs
+            WHERE walnut_id_1 = ? AND walnut_id_2 = ? AND is_active = 1
+            LIMIT 1
+            """,
+            (left, right),
+        ).fetchone():
+            raise ValueError("已锁定的配对不能拉黑，请先解除锁定。")
+        normalized_reason = reason.strip() if isinstance(reason, str) and reason.strip() else None
         cursor.execute(
             """
             INSERT OR IGNORE INTO pair_blacklist (
@@ -631,7 +708,7 @@ def create_blacklist_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int, r
             )
             VALUES (?, ?, ?, ?, ?)
             """,
-            (variety_id, left, right, reason, now_str()),
+            (variety_id, left, right, normalized_reason, now_str()),
         )
         if cursor.lastrowid:
             return int(cursor.lastrowid)
@@ -671,6 +748,12 @@ def list_blacklist_pairs(variety_id: int | None = None) -> list[dict[str, Any]]:
     with db_connection() as conn:
         rows = conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
+
+
+def delete_blacklist_pair(blacklist_id: int) -> bool:
+    with db_connection() as conn:
+        cursor = conn.execute("DELETE FROM pair_blacklist WHERE id = ?", (blacklist_id,))
+        return cursor.rowcount > 0
 
 
 def is_pair_blacklisted(walnut_id_1: int, walnut_id_2: int) -> bool:
