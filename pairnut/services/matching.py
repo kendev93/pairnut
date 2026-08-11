@@ -56,7 +56,9 @@ def _validate_screening_multiplier(multiplier: float) -> float:
     try:
         value = float(multiplier)
     except (TypeError, ValueError) as exc:
-        raise ValueError("screening multiplier must be a positive finite number.") from exc
+        raise ValueError(
+            "screening multiplier must be a positive finite number."
+        ) from exc
     if not math.isfinite(value) or value <= 0:
         raise ValueError("screening multiplier must be a positive finite number.")
     return value
@@ -135,7 +137,9 @@ def _load_matching_snapshot(variety_id: int) -> _MatchingSnapshot:
     )
 
 
-def _reverse_image_similarity(similarity: WalnutImageSimilarity) -> WalnutImageSimilarity:
+def _reverse_image_similarity(
+    similarity: WalnutImageSimilarity,
+) -> WalnutImageSimilarity:
     return WalnutImageSimilarity(
         score=similarity.score,
         matched_faces=similarity.matched_faces,
@@ -214,7 +218,9 @@ def _candidate_from_pair(
         image_similarity=image_similarity.score if image_similarity else None,
         image_matched_faces=image_similarity.matched_faces if image_similarity else 0,
         image_base_faces=image_similarity.base_faces if image_similarity else 0,
-        image_candidate_faces=image_similarity.candidate_faces if image_similarity else 0,
+        image_candidate_faces=image_similarity.candidate_faces
+        if image_similarity
+        else 0,
         mesh_similarity=mesh_similarity.score if mesh_similarity else None,
         is_strict_match=within_tolerance(base, candidate, tolerance_mm),
     )
@@ -255,7 +261,9 @@ def _get_candidates_from_snapshot(
             continue
         candidates.append(candidate)
 
-    candidates.sort(key=lambda item: (-item.total_score, item.weight_diff, item.serial_no))
+    candidates.sort(
+        key=lambda item: (-item.total_score, item.weight_diff, item.serial_no)
+    )
     return candidates if limit is None else candidates[:limit]
 
 
@@ -352,7 +360,9 @@ def lock_candidate_pair(
         limit=None,
         minimum_score=minimum_score,
     )
-    candidate = next((item for item in candidates if item.walnut_id == walnut_id_2), None)
+    candidate = next(
+        (item for item in candidates if item.walnut_id == walnut_id_2), None
+    )
     if candidate is None:
         raise ValueError("该配对未达到当前推荐门槛。")
     if not candidate.is_strict_match:
@@ -392,10 +402,14 @@ def _select_non_overlapping_pairs(possible_pairs: list[PairMatch]) -> list[PairM
             pair = unique_pairs[key]
             # The tiny deterministic tie-breaker never changes a meaningful score.
             tie_breaker = (len(unique_pairs) - index) * 1e-10
-            graph.add_edge(key[0], key[1], weight=pair.candidate.total_score + tie_breaker)
+            graph.add_edge(
+                key[0], key[1], weight=pair.candidate.total_score + tie_breaker
+            )
         large_selected_keys = sorted(
             _pair_key(int(left), int(right))
-            for left, right in nx.max_weight_matching(graph, maxcardinality=False, weight="weight")
+            for left, right in nx.max_weight_matching(
+                graph, maxcardinality=False, weight="weight"
+            )
         )
         return [unique_pairs[key] for key in large_selected_keys]
 

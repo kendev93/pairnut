@@ -27,7 +27,10 @@ class _Response:
 
 class UpdateTests(unittest.TestCase):
     def test_default_update_source_uses_gitee_release_api(self) -> None:
-        self.assertEqual(LATEST_RELEASE_URL, "https://gitee.com/api/v5/repos/ck0318/pairnut/releases/latest")
+        self.assertEqual(
+            LATEST_RELEASE_URL,
+            "https://gitee.com/api/v5/repos/ck0318/pairnut/releases/latest",
+        )
 
     def test_version_comparison_accepts_release_tags(self) -> None:
         self.assertTrue(is_newer_version("v1.2.0", "1.1.9"))
@@ -35,9 +38,13 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(is_newer_version("v1.2.0", "1.2.1"))
 
     def test_check_for_update_reports_new_release(self) -> None:
-        body = b'{"tag_name": "v0.2.0", "html_url": "https://example.com/releases/v0.2.0"}'
+        body = (
+            b'{"tag_name": "v0.2.0", "html_url": "https://example.com/releases/v0.2.0"}'
+        )
         with patch("pairnut.services.updates.urlopen", return_value=_Response(body)):
-            info = check_for_update(current_version="0.1.0", release_api_url="https://example.com/api")
+            info = check_for_update(
+                current_version="0.1.0", release_api_url="https://example.com/api"
+            )
 
         self.assertTrue(info.has_update)
         self.assertEqual(info.latest_version, "v0.2.0")
@@ -46,21 +53,29 @@ class UpdateTests(unittest.TestCase):
 
     def test_check_for_update_handles_network_errors(self) -> None:
         with patch("pairnut.services.updates.urlopen", side_effect=OSError("offline")):
-            info = check_for_update(current_version="0.1.0", release_api_url="https://example.com/api")
+            info = check_for_update(
+                current_version="0.1.0", release_api_url="https://example.com/api"
+            )
 
         self.assertFalse(info.has_update)
         self.assertEqual(info.error, "offline")
 
     def test_check_for_update_handles_invalid_json(self) -> None:
-        with patch("pairnut.services.updates.urlopen", return_value=_Response(b"not json")):
-            info = check_for_update(current_version="0.1.0", release_api_url="https://example.com/api")
+        with patch(
+            "pairnut.services.updates.urlopen", return_value=_Response(b"not json")
+        ):
+            info = check_for_update(
+                current_version="0.1.0", release_api_url="https://example.com/api"
+            )
 
         self.assertFalse(info.has_update)
         self.assertIsNotNone(info.error)
 
     def test_check_for_update_handles_non_object_json(self) -> None:
         with patch("pairnut.services.updates.urlopen", return_value=_Response(b"[]")):
-            info = check_for_update(current_version="0.1.0", release_api_url="https://example.com/api")
+            info = check_for_update(
+                current_version="0.1.0", release_api_url="https://example.com/api"
+            )
 
         self.assertFalse(info.has_update)
         self.assertEqual(info.latest_version, None)
@@ -71,7 +86,9 @@ class UpdateTests(unittest.TestCase):
         worker = UpdateCheckWorker()
         worker.finished.connect(results.append)
 
-        with patch("pairnut.ui.views.check_for_update", side_effect=RuntimeError("unexpected")):
+        with patch(
+            "pairnut.ui.views.check_for_update", side_effect=RuntimeError("unexpected")
+        ):
             worker.run()
 
         self.assertEqual(len(results), 1)

@@ -42,7 +42,10 @@ class SchemaTests(unittest.TestCase):
         os.environ.pop("PAIRNUT_DATA_DIR", None)
 
         with patch.object(sys, "frozen", False, create=True):
-            self.assertEqual(get_db_path(), Path(__file__).resolve().parents[1] / "data" / "pairnut.db")
+            self.assertEqual(
+                get_db_path(),
+                Path(__file__).resolve().parents[1] / "data" / "pairnut.db",
+            )
 
         os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name
 
@@ -57,7 +60,11 @@ class SchemaTests(unittest.TestCase):
         ):
             self.assertEqual(
                 get_db_path(),
-                Path(home_dir) / "Library" / "Application Support" / "PairNut" / "pairnut.db",
+                Path(home_dir)
+                / "Library"
+                / "Application Support"
+                / "PairNut"
+                / "pairnut.db",
             )
 
         os.environ["PAIRNUT_DATA_DIR"] = self.tempdir.name

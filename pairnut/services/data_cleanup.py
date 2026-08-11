@@ -14,7 +14,9 @@ STAGING_MANIFEST = ".manifest.json"
 
 
 def _collect_asset_paths(walnut_id: int) -> tuple[list[str], list[str]]:
-    image_paths = [image["stored_path"] for image in repositories.list_walnut_images(walnut_id)]
+    image_paths = [
+        image["stored_path"] for image in repositories.list_walnut_images(walnut_id)
+    ]
     mesh = repositories.get_walnut_mesh(walnut_id)
     mesh_paths = [mesh["stored_path"]] if mesh else []
     return image_paths, mesh_paths
@@ -28,13 +30,18 @@ def _resolve_asset_path(root: Path, stored_path: str) -> Path:
     return candidate
 
 
-def _stage_assets(image_paths: list[str], mesh_paths: list[str]) -> tuple[Path, list[tuple[Path, Path]]]:
+def _stage_assets(
+    image_paths: list[str], mesh_paths: list[str]
+) -> tuple[Path, list[tuple[Path, Path]]]:
     """Move assets to a recoverable staging directory before DB deletion."""
     staging_root = Path(tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=get_data_dir()))
     staged: list[tuple[Path, Path]] = []
     manifest_records: list[dict[str, str]] = []
     try:
-        for root, stored_paths in ((get_images_dir(), image_paths), (get_meshes_dir(), mesh_paths)):
+        for root, stored_paths in (
+            (get_images_dir(), image_paths),
+            (get_meshes_dir(), mesh_paths),
+        ):
             for index, stored_path in enumerate(stored_paths):
                 candidate = _resolve_asset_path(root, stored_path)
                 if not candidate.exists():
@@ -76,7 +83,9 @@ def _discard_staged_assets(staging_root: Path) -> None:
 def _write_staging_manifest(staging_root: Path, records: list[dict[str, str]]) -> None:
     manifest_path = staging_root / STAGING_MANIFEST
     temporary_path = manifest_path.with_suffix(".tmp")
-    temporary_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary_path.write_text(
+        json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     temporary_path.replace(manifest_path)
 
 
@@ -115,7 +124,13 @@ def recover_stale_staging() -> int:
             if not isinstance(staged_name, str) or not staged_name:
                 unresolved = True
                 continue
-            root = images_root if root_name == images_root.name else meshes_root if root_name == meshes_root.name else None
+            root = (
+                images_root
+                if root_name == images_root.name
+                else meshes_root
+                if root_name == meshes_root.name
+                else None
+            )
             if root is None or Path(staged_name).name != staged_name:
                 unresolved = True
                 continue

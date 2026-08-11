@@ -39,7 +39,9 @@ def parse_image_filename(path: str | Path) -> ParsedImageName | None:
     match = FILENAME_PATTERN.match(source.stem.strip())
     if not match:
         return None
-    return ParsedImageName(serial_no=match.group(1).strip(), face_no=int(match.group(2)))
+    return ParsedImageName(
+        serial_no=match.group(1).strip(), face_no=int(match.group(2))
+    )
 
 
 def _safe_path_part(value: str) -> str:
@@ -55,7 +57,9 @@ def _resolve_stored_image_path(stored_path: str) -> Path:
     return candidate
 
 
-def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> BatchImageImportResult:
+def import_walnut_images(
+    file_paths: list[str | Path], variety_id: int
+) -> BatchImageImportResult:
     result = BatchImageImportResult()
     images_root = get_images_dir()
     images_by_walnut = repositories.list_walnut_images_for_variety(variety_id)
@@ -71,25 +75,41 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
             continue
         try:
             if source.stat().st_size > MAX_IMAGE_FILE_SIZE:
-                result.skipped.append(f"{source.name}: 文件过大，不能超过 {MAX_IMAGE_FILE_SIZE // (1024 * 1024)} MB")
+                result.skipped.append(
+                    f"{source.name}: 文件过大，不能超过 {MAX_IMAGE_FILE_SIZE // (1024 * 1024)} MB"
+                )
                 continue
         except OSError as exc:
             result.skipped.append(f"{source.name}: 无法读取文件信息：{exc}")
             continue
 
-        walnut = repositories.get_walnut_by_serial_and_variety(parsed.serial_no, variety_id)
+        walnut = repositories.get_walnut_by_serial_and_variety(
+            parsed.serial_no, variety_id
+        )
         if walnut is None:
-            result.skipped.append(f"{source.name}: 当前品种下没有编号 {parsed.serial_no}")
+            result.skipped.append(
+                f"{source.name}: 当前品种下没有编号 {parsed.serial_no}"
+            )
             continue
 
         walnut_id = int(walnut["id"])
         if walnut["is_locked"]:
             result.skipped.append(f"{source.name}: 核桃已锁定，不能修改图片")
             continue
-        relative_path = Path(f"{walnut_id}-{_safe_path_part(parsed.serial_no)}") / f"{parsed.face_no}{source.suffix.lower()}"
+        relative_path = (
+            Path(f"{walnut_id}-{_safe_path_part(parsed.serial_no)}")
+            / f"{parsed.face_no}{source.suffix.lower()}"
+        )
         target = images_root / relative_path
         existing_images = images_by_walnut.get(walnut_id, [])
-        existing_image = next((image for image in existing_images if int(image["face_no"]) == parsed.face_no), None)
+        existing_image = next(
+            (
+                image
+                for image in existing_images
+                if int(image["face_no"]) == parsed.face_no
+            ),
+            None,
+        )
 
         try:
             features = extract_opencv_features(source)
@@ -137,7 +157,9 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
                 try:
                     old_path.unlink()
                 except OSError as exc:
-                    result.skipped.append(f"{source.name}: 旧图片清理失败，已保留旧文件：{exc}")
+                    result.skipped.append(
+                        f"{source.name}: 旧图片清理失败，已保留旧文件：{exc}"
+                    )
             result.replaced_count += 1
         else:
             result.imported_count += 1

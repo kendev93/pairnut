@@ -82,7 +82,10 @@ class ModelRegistryTests(unittest.TestCase):
     def test_optional_model_is_not_downloaded_by_default(self) -> None:
         self.assertFalse(is_model_downloaded(OPTIONAL_MOBILENET_MODEL))
         self.assertFalse(can_download_model(OPTIONAL_MOBILENET_MODEL))
-        self.assertEqual(model_path(OPTIONAL_MOBILENET_MODEL), get_models_dir() / OPTIONAL_MOBILENET_MODEL.filename)
+        self.assertEqual(
+            model_path(OPTIONAL_MOBILENET_MODEL),
+            get_models_dir() / OPTIONAL_MOBILENET_MODEL.filename,
+        )
         self.assertEqual(OPTIONAL_MOBILENET_MODEL.size_label, "约 15-30 MB")
         self.assertEqual(OPTIONAL_MOBILENET_MODEL.resource_label, "中")
         self.assertIn("提升", OPTIONAL_MOBILENET_MODEL.effect_label)
@@ -103,7 +106,13 @@ class ModelRegistryTests(unittest.TestCase):
             download_url="http://example.com/model.onnx",
             sha256="a" * 64,
         )
-        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)), self.assertRaises(ValueError):
+        with (
+            patch(
+                "pairnut.services.model_registry.MODEL_CATALOG",
+                (BUILTIN_OPENCV_MODEL, model),
+            ),
+            self.assertRaises(ValueError),
+        ):
             download_model(model.model_id)
 
     def test_download_requires_checksum_and_cleans_temporary_file(self) -> None:
@@ -113,7 +122,13 @@ class ModelRegistryTests(unittest.TestCase):
             sha256=None,
         )
 
-        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)), self.assertRaises(ValueError):
+        with (
+            patch(
+                "pairnut.services.model_registry.MODEL_CATALOG",
+                (BUILTIN_OPENCV_MODEL, model),
+            ),
+            self.assertRaises(ValueError),
+        ):
             download_model(model.model_id)
 
         path = model_path(model)
@@ -130,8 +145,13 @@ class ModelRegistryTests(unittest.TestCase):
         )
         response = self._FakeResponse(data)
 
-        with patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)):
-            path = download_model(model.model_id, urlopen_func=lambda url, timeout: response)
+        with patch(
+            "pairnut.services.model_registry.MODEL_CATALOG",
+            (BUILTIN_OPENCV_MODEL, model),
+        ):
+            path = download_model(
+                model.model_id, urlopen_func=lambda url, timeout: response
+            )
 
         self.assertEqual(path.read_bytes(), data)
         path.unlink()
@@ -146,7 +166,10 @@ class ModelRegistryTests(unittest.TestCase):
         response = self._FakeResponse(data)
 
         with (
-            patch("pairnut.services.model_registry.MODEL_CATALOG", (BUILTIN_OPENCV_MODEL, model)),
+            patch(
+                "pairnut.services.model_registry.MODEL_CATALOG",
+                (BUILTIN_OPENCV_MODEL, model),
+            ),
             patch("pairnut.services.model_registry.MAX_MODEL_FILE_SIZE", 1),
             self.assertRaisesRegex(ValueError, "too large"),
         ):

@@ -67,7 +67,9 @@ def extract_opencv_features(image_path: Path) -> ImageFeatures:
 
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     _, threshold = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
     if not contours:
         shape_vector = [0.0, 0.0, 0.0, 0.0, 0.0]
     else:
@@ -94,7 +96,9 @@ def extract_opencv_features(image_path: Path) -> ImageFeatures:
 
 
 def serialize_vector(vector: Sequence[float]) -> str:
-    return json.dumps([round(float(value), 8) for value in vector], separators=(",", ":"))
+    return json.dumps(
+        [round(float(value), 8) for value in vector], separators=(",", ":")
+    )
 
 
 def deserialize_vector(value: str) -> list[float]:
@@ -149,7 +153,9 @@ def feature_similarity(left: dict, right: dict) -> float:
         deserialize_vector(left["shape_vector"]),
         deserialize_vector(right["shape_vector"]),
     )
-    return ((color_score * 0.4) + (texture_score * 0.4) + (current_shape_similarity * 0.2)) * 100.0
+    return (
+        (color_score * 0.4) + (texture_score * 0.4) + (current_shape_similarity * 0.2)
+    ) * 100.0
 
 
 def _safe_feature_similarity(left: dict, right: dict) -> float | None:
@@ -182,7 +188,12 @@ def image_similarity_from_features(
     scores = [
         score
         for face_no in matched_faces
-        if (score := _safe_feature_similarity(base_by_face[face_no], candidate_by_face[face_no])) is not None
+        if (
+            score := _safe_feature_similarity(
+                base_by_face[face_no], candidate_by_face[face_no]
+            )
+        )
+        is not None
     ]
     if not scores:
         return None
@@ -194,8 +205,12 @@ def image_similarity_from_features(
     )
 
 
-def walnut_image_similarity(base_walnut_id: int, candidate_walnut_id: int) -> WalnutImageSimilarity | None:
+def walnut_image_similarity(
+    base_walnut_id: int, candidate_walnut_id: int
+) -> WalnutImageSimilarity | None:
     return image_similarity_from_features(
         repositories.list_walnut_image_features(base_walnut_id, OPENCV_FEATURE_VERSION),
-        repositories.list_walnut_image_features(candidate_walnut_id, OPENCV_FEATURE_VERSION),
+        repositories.list_walnut_image_features(
+            candidate_walnut_id, OPENCV_FEATURE_VERSION
+        ),
     )

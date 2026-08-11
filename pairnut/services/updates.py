@@ -48,13 +48,23 @@ def check_for_update(
     release_api_url: str = LATEST_RELEASE_URL,
     timeout_seconds: float = 5.0,
 ) -> UpdateInfo:
-    request = Request(release_api_url, headers={"User-Agent": f"PairNut/{current_version}"})
+    request = Request(
+        release_api_url, headers={"User-Agent": f"PairNut/{current_version}"}
+    )
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
             if not isinstance(payload, dict):
                 raise TypeError("release payload must be a JSON object")
-    except (HTTPError, URLError, TimeoutError, OSError, UnicodeError, TypeError, ValueError) as exc:
+    except (
+        HTTPError,
+        URLError,
+        TimeoutError,
+        OSError,
+        UnicodeError,
+        TypeError,
+        ValueError,
+    ) as exc:
         return UpdateInfo(
             current_version=current_version,
             latest_version=None,

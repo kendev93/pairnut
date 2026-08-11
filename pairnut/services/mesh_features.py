@@ -49,7 +49,9 @@ def _resolve_stored_mesh_path(stored_path: str) -> Path:
 
 
 def _serialize_vector(values: Iterable[float]) -> str:
-    return json.dumps([round(float(value), 8) for value in values], separators=(",", ":"))
+    return json.dumps(
+        [round(float(value), 8) for value in values], separators=(",", ":")
+    )
 
 
 def _deserialize_vector(value: str) -> list[float]:
@@ -139,7 +141,10 @@ def _parse_ply(path: Path) -> MeshData:
     header_end = -1
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped == "format binary_little_endian 1.0" or stripped == "format binary_big_endian 1.0":
+        if (
+            stripped == "format binary_little_endian 1.0"
+            or stripped == "format binary_big_endian 1.0"
+        ):
             raise ValueError("暂不支持二进制 PLY，请导出 ASCII PLY。")
         if stripped.startswith("element vertex "):
             vertex_count = int(stripped.rsplit(" ", 1)[1])
@@ -187,11 +192,15 @@ def load_mesh(path: str | Path) -> MeshData:
     return mesh
 
 
-def _sub(left: tuple[float, float, float], right: tuple[float, float, float]) -> tuple[float, float, float]:
+def _sub(
+    left: tuple[float, float, float], right: tuple[float, float, float]
+) -> tuple[float, float, float]:
     return (left[0] - right[0], left[1] - right[1], left[2] - right[2])
 
 
-def _cross(left: tuple[float, float, float], right: tuple[float, float, float]) -> tuple[float, float, float]:
+def _cross(
+    left: tuple[float, float, float], right: tuple[float, float, float]
+) -> tuple[float, float, float]:
     return (
         (left[1] * right[2]) - (left[2] * right[1]),
         (left[2] * right[0]) - (left[0] * right[2]),
@@ -229,11 +238,19 @@ def extract_mesh_features(path: str | Path) -> MeshFeature:
     centroid = (sum(xs) / len(xs), sum(ys) / len(ys), sum(zs) / len(zs))
     radii = [_norm(_sub(vertex, centroid)) for vertex in mesh.vertices]
     mean_radius = sum(radii) / len(radii)
-    radial_std = math.sqrt(sum((radius - mean_radius) ** 2 for radius in radii) / len(radii)) if radii else 0.0
+    radial_std = (
+        math.sqrt(sum((radius - mean_radius) ** 2 for radius in radii) / len(radii))
+        if radii
+        else 0.0
+    )
     radial_cv = radial_std / mean_radius if mean_radius > 0 else 0.0
 
     compactness = volume / bbox_volume if bbox_volume > 0 else 0.0
-    sphericity = ((math.pi ** (1.0 / 3.0)) * ((6.0 * volume) ** (2.0 / 3.0)) / surface_area) if volume > 0 and surface_area > 0 else 0.0
+    sphericity = (
+        ((math.pi ** (1.0 / 3.0)) * ((6.0 * volume) ** (2.0 / 3.0)) / surface_area)
+        if volume > 0 and surface_area > 0
+        else 0.0
+    )
     aspect_1 = dimensions[1] / dimensions[0] if dimensions[0] > 0 else 0.0
     aspect_2 = dimensions[2] / dimensions[0] if dimensions[0] > 0 else 0.0
 
@@ -274,7 +291,9 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
         raise ValueError("模型文件不存在。")
     try:
         if source.stat().st_size > MAX_MESH_FILE_SIZE:
-            raise ValueError(f"模型文件过大，不能超过 {MAX_MESH_FILE_SIZE // (1024 * 1024)} MB。")
+            raise ValueError(
+                f"模型文件过大，不能超过 {MAX_MESH_FILE_SIZE // (1024 * 1024)} MB。"
+            )
     except OSError as exc:
         raise ValueError(f"无法读取模型文件信息：{exc}") from exc
 
@@ -286,7 +305,10 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
 
     feature = extract_mesh_features(source)
     meshes_root = get_meshes_dir()
-    relative_path = Path(f"{walnut_id}-{_safe_path_part(walnut['serial_no'])}") / f"source{source.suffix.lower()}"
+    relative_path = (
+        Path(f"{walnut_id}-{_safe_path_part(walnut['serial_no'])}")
+        / f"source{source.suffix.lower()}"
+    )
     target = meshes_root / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
     previous = repositories.get_walnut_mesh(walnut_id)
@@ -297,7 +319,9 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
         shutil.copy2(target, backup_path)
     try:
         shutil.copy2(source, target)
-        mesh_id = repositories.upsert_walnut_mesh(walnut_id, source.name, relative_path.as_posix())
+        mesh_id = repositories.upsert_walnut_mesh(
+            walnut_id, source.name, relative_path.as_posix()
+        )
         store_mesh_feature(mesh_id, feature)
     except Exception:
         if backup_path and backup_path.exists():
@@ -312,7 +336,9 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
                 previous["original_filename"],
                 previous["stored_path"],
             )
-            previous_features = repositories.list_walnut_mesh_features(walnut_id, MESH_FEATURE_VERSION)
+            previous_features = repositories.list_walnut_mesh_features(
+                walnut_id, MESH_FEATURE_VERSION
+            )
             if previous_features:
                 repositories.upsert_walnut_mesh_feature(
                     mesh_id=previous_mesh_id,
@@ -367,10 +393,14 @@ def _value_similarity(left: float, right: float) -> float:
 def _vector_similarity(left: list[float], right: list[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
-    return sum(_value_similarity(left[index], right[index]) for index in range(len(left))) / len(left)
+    return sum(
+        _value_similarity(left[index], right[index]) for index in range(len(left))
+    ) / len(left)
 
 
-def _normalized_feature_vectors(feature: dict) -> tuple[list[float], list[float]] | None:
+def _normalized_feature_vectors(
+    feature: dict,
+) -> tuple[list[float], list[float]] | None:
     try:
         dimensions = _deserialize_vector(feature["dimensions_vector"])
         shape = _deserialize_vector(feature["shape_vector"])
@@ -407,7 +437,9 @@ def feature_similarity(left: dict, right: dict) -> float:
     dimension_score = _vector_similarity(left_dimensions, right_dimensions)
     volume_score = _vector_similarity(left_shape[:3], right_shape[:3])
     shape_score = _vector_similarity(left_shape[3:], right_shape[3:])
-    return ((dimension_score * 0.45) + (volume_score * 0.25) + (shape_score * 0.30)) * 100.0
+    return (
+        (dimension_score * 0.45) + (volume_score * 0.25) + (shape_score * 0.30)
+    ) * 100.0
 
 
 def mesh_similarity_from_features(
@@ -416,13 +448,22 @@ def mesh_similarity_from_features(
 ) -> WalnutMeshSimilarity | None:
     if not base_features or not candidate_features:
         return None
-    if _normalized_feature_vectors(base_features[0]) is None or _normalized_feature_vectors(candidate_features[0]) is None:
+    if (
+        _normalized_feature_vectors(base_features[0]) is None
+        or _normalized_feature_vectors(candidate_features[0]) is None
+    ):
         return None
-    return WalnutMeshSimilarity(score=feature_similarity(base_features[0], candidate_features[0]))
+    return WalnutMeshSimilarity(
+        score=feature_similarity(base_features[0], candidate_features[0])
+    )
 
 
-def walnut_mesh_similarity(base_walnut_id: int, candidate_walnut_id: int) -> WalnutMeshSimilarity | None:
+def walnut_mesh_similarity(
+    base_walnut_id: int, candidate_walnut_id: int
+) -> WalnutMeshSimilarity | None:
     return mesh_similarity_from_features(
         repositories.list_walnut_mesh_features(base_walnut_id, MESH_FEATURE_VERSION),
-        repositories.list_walnut_mesh_features(candidate_walnut_id, MESH_FEATURE_VERSION),
+        repositories.list_walnut_mesh_features(
+            candidate_walnut_id, MESH_FEATURE_VERSION
+        ),
     )

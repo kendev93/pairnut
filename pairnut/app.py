@@ -20,7 +20,9 @@ def assets_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "assets"
 
 
-def build_application(argv: list[str] | None = None) -> tuple[QApplication, PairNutMainWindow]:
+def build_application(
+    argv: list[str] | None = None,
+) -> tuple[QApplication, PairNutMainWindow]:
     app = QApplication.instance() or QApplication(argv or sys.argv)
     app.setApplicationName("PairNut")
     app.setOrganizationName("PairNut")

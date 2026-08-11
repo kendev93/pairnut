@@ -50,8 +50,12 @@ class DataCleanupTests(unittest.TestCase):
         mesh_path.parent.mkdir(parents=True)
         image_path.write_bytes(b"image")
         mesh_path.write_text("mesh", encoding="utf-8")
-        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
-        repositories.upsert_walnut_mesh(self.walnut_id, "source.obj", f"{self.walnut_id}-NJS-01/source.obj")
+        repositories.upsert_walnut_image(
+            self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg"
+        )
+        repositories.upsert_walnut_mesh(
+            self.walnut_id, "source.obj", f"{self.walnut_id}-NJS-01/source.obj"
+        )
 
         self.assertTrue(delete_walnut_data(self.walnut_id))
 
@@ -67,8 +71,12 @@ class DataCleanupTests(unittest.TestCase):
         mesh_path.parent.mkdir(parents=True)
         image_path.write_bytes(b"image")
         mesh_path.write_text("mesh", encoding="utf-8")
-        repositories.upsert_walnut_image(second_id, 1, "NJS-02-1.jpg", f"{second_id}-NJS-02/1.jpg")
-        repositories.upsert_walnut_mesh(second_id, "source.obj", f"{second_id}-NJS-02/source.obj")
+        repositories.upsert_walnut_image(
+            second_id, 1, "NJS-02-1.jpg", f"{second_id}-NJS-02/1.jpg"
+        )
+        repositories.upsert_walnut_mesh(
+            second_id, "source.obj", f"{second_id}-NJS-02/source.obj"
+        )
 
         self.assertTrue(delete_variety_data(self.variety_id))
 
@@ -76,7 +84,9 @@ class DataCleanupTests(unittest.TestCase):
         self.assertFalse(image_path.exists())
         self.assertFalse(mesh_path.exists())
 
-    def test_delete_locked_walnut_is_rejected_without_orphaning_partner_lock(self) -> None:
+    def test_delete_locked_walnut_is_rejected_without_orphaning_partner_lock(
+        self,
+    ) -> None:
         partner_id = self._create_walnut("NJS-02")
         pair_id = repositories.lock_pair(self.variety_id, self.walnut_id, partner_id)
 
@@ -84,7 +94,9 @@ class DataCleanupTests(unittest.TestCase):
             delete_walnut_data(self.walnut_id)
 
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
-        self.assertEqual(repositories.get_active_lock_for_walnut(partner_id)["id"], pair_id)
+        self.assertEqual(
+            repositories.get_active_lock_for_walnut(partner_id)["id"], pair_id
+        )
         self.assertEqual(repositories.get_walnut(partner_id)["is_locked"], 1)
 
     def test_delete_variety_with_locked_pair_is_rejected(self) -> None:
@@ -102,9 +114,17 @@ class DataCleanupTests(unittest.TestCase):
         image_path = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
         image_path.parent.mkdir(parents=True)
         image_path.write_bytes(b"image")
-        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
+        repositories.upsert_walnut_image(
+            self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg"
+        )
 
-        with patch("pairnut.services.data_cleanup.shutil.move", side_effect=OSError("disk error")), self.assertRaises(OSError):
+        with (
+            patch(
+                "pairnut.services.data_cleanup.shutil.move",
+                side_effect=OSError("disk error"),
+            ),
+            self.assertRaises(OSError),
+        ):
             delete_walnut_data(self.walnut_id)
 
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
@@ -114,9 +134,18 @@ class DataCleanupTests(unittest.TestCase):
         image_path = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
         image_path.parent.mkdir(parents=True)
         image_path.write_bytes(b"image")
-        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
+        repositories.upsert_walnut_image(
+            self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg"
+        )
 
-        with patch.object(repositories, "delete_walnut", side_effect=RuntimeError("database unavailable")), self.assertRaises(RuntimeError):
+        with (
+            patch.object(
+                repositories,
+                "delete_walnut",
+                side_effect=RuntimeError("database unavailable"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
             delete_walnut_data(self.walnut_id)
 
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
@@ -127,7 +156,9 @@ class DataCleanupTests(unittest.TestCase):
         image_path = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
         image_path.parent.mkdir(parents=True)
         image_path.write_bytes(b"image")
-        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
+        repositories.upsert_walnut_image(
+            self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg"
+        )
 
         staging_root, _ = _stage_assets([f"{self.walnut_id}-NJS-01/1.jpg"], [])
         self.assertFalse(image_path.exists())

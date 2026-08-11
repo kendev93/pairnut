@@ -122,14 +122,18 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(get_candidates_for_walnut(self.w1, minimum_score=101.0), [])
 
     def test_matching_view_data_reuses_one_walnut_snapshot(self) -> None:
-        with patch.object(repositories, "list_walnuts", wraps=repositories.list_walnuts) as list_walnuts:
+        with patch.object(
+            repositories, "list_walnuts", wraps=repositories.list_walnuts
+        ) as list_walnuts:
             walnuts, candidates = get_matching_view_data(self.variety_id)
 
         self.assertEqual(len(walnuts), 4)
         self.assertIn(self.w1, candidates)
         self.assertEqual(list_walnuts.call_count, 1)
 
-    def test_partial_optional_evidence_has_lower_influence_than_full_coverage(self) -> None:
+    def test_partial_optional_evidence_has_lower_influence_than_full_coverage(
+        self,
+    ) -> None:
         full_coverage = _combine_optional_evidence(80.0, [100.0], [1.0])
         partial_coverage = _combine_optional_evidence(80.0, [100.0], [1.0 / 6.0])
 
@@ -153,7 +157,10 @@ class MatchingTests(unittest.TestCase):
     def test_active_lock_table_is_source_of_truth_for_matching(self) -> None:
         repositories.lock_pair(self.variety_id, self.w1, self.w2)
         with db_connection() as conn:
-            conn.execute("UPDATE walnuts SET is_locked = 0 WHERE id IN (?, ?)", (self.w1, self.w2))
+            conn.execute(
+                "UPDATE walnuts SET is_locked = 0 WHERE id IN (?, ?)",
+                (self.w1, self.w2),
+            )
 
         result = get_candidates_for_variety(self.variety_id)
 
@@ -174,7 +181,9 @@ class MatchingTests(unittest.TestCase):
         self.assertNotIn(self.w2, candidate_ids)
 
     def test_blacklisted_pair_cannot_be_locked_and_can_be_removed(self) -> None:
-        blacklist_id = repositories.create_blacklist_pair(self.variety_id, self.w1, self.w2, reason="人工排除")
+        blacklist_id = repositories.create_blacklist_pair(
+            self.variety_id, self.w1, self.w2, reason="人工排除"
+        )
 
         with self.assertRaises(ValueError):
             repositories.lock_pair(self.variety_id, self.w1, self.w2)
@@ -259,7 +268,9 @@ class MatchingTests(unittest.TestCase):
         )
 
         with self.assertRaises(ValueError):
-            repositories.create_blacklist_pair(self.variety_id, self.w1, other_walnut_id)
+            repositories.create_blacklist_pair(
+                self.variety_id, self.w1, other_walnut_id
+            )
 
     def test_candidates_include_mesh_similarity_when_available(self) -> None:
         mesh_id_1 = repositories.upsert_walnut_mesh(self.w1, "w1.obj", "w1/source.obj")
@@ -303,7 +314,9 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(candidate.image_matched_faces, 1)
 
     def test_candidates_for_variety_reuse_the_walnut_snapshot(self) -> None:
-        with patch.object(repositories, "list_walnuts", wraps=repositories.list_walnuts) as list_walnuts:
+        with patch.object(
+            repositories, "list_walnuts", wraps=repositories.list_walnuts
+        ) as list_walnuts:
             get_candidates_for_variety(self.variety_id)
 
         self.assertEqual(list_walnuts.call_count, 1)
@@ -311,7 +324,11 @@ class MatchingTests(unittest.TestCase):
     def test_non_overlapping_pairs_use_each_walnut_at_most_once(self) -> None:
         result = get_non_overlapping_pairs(self.variety_id)
 
-        used_ids = [walnut_id for pair in result for walnut_id in (pair.walnut_id_1, pair.walnut_id_2)]
+        used_ids = [
+            walnut_id
+            for pair in result
+            for walnut_id in (pair.walnut_id_1, pair.walnut_id_2)
+        ]
 
         self.assertEqual(len(used_ids), len(set(used_ids)))
         self.assertEqual(len(result), 2)
@@ -345,9 +362,13 @@ class MatchingTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual({(item.walnut_id_1, item.walnut_id_2) for item in result}, {(1, 3), (2, 4)})
+        self.assertEqual(
+            {(item.walnut_id_1, item.walnut_id_2) for item in result}, {(1, 3), (2, 4)}
+        )
 
-    def test_large_non_overlapping_selection_does_not_use_greedy_local_optimum(self) -> None:
+    def test_large_non_overlapping_selection_does_not_use_greedy_local_optimum(
+        self,
+    ) -> None:
         def pair(left: int, right: int, score: float) -> PairMatch:
             return PairMatch(
                 left,

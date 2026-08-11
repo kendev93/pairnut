@@ -49,7 +49,12 @@ class ImageFeatureTests(unittest.TestCase):
         )
 
     def _store_feature(self, walnut_id: int, face_no: int, vector: list[float]) -> None:
-        image_id = repositories.upsert_walnut_image(walnut_id, face_no, f"{walnut_id}-{face_no}.jpg", f"{walnut_id}/{face_no}.jpg")
+        image_id = repositories.upsert_walnut_image(
+            walnut_id,
+            face_no,
+            f"{walnut_id}-{face_no}.jpg",
+            f"{walnut_id}/{face_no}.jpg",
+        )
         repositories.upsert_walnut_image_feature(
             image_id=image_id,
             feature_version=OPENCV_FEATURE_VERSION,
@@ -86,16 +91,44 @@ class ImageFeatureTests(unittest.TestCase):
 
     def test_malformed_image_feature_is_ignored_without_crashing(self) -> None:
         result = image_similarity_from_features(
-            [{"face_no": 1, "color_histogram": "not-json", "texture_vector": "[1]", "shape_vector": "[1]"}],
-            [{"face_no": 1, "color_histogram": "[1]", "texture_vector": "[1]", "shape_vector": "[1]"}],
+            [
+                {
+                    "face_no": 1,
+                    "color_histogram": "not-json",
+                    "texture_vector": "[1]",
+                    "shape_vector": "[1]",
+                }
+            ],
+            [
+                {
+                    "face_no": 1,
+                    "color_histogram": "[1]",
+                    "texture_vector": "[1]",
+                    "shape_vector": "[1]",
+                }
+            ],
         )
 
         self.assertIsNone(result)
 
     def test_non_finite_image_feature_is_ignored_without_crashing(self) -> None:
         result = image_similarity_from_features(
-            [{"face_no": 1, "color_histogram": "[NaN]", "texture_vector": "[1]", "shape_vector": "[1]"}],
-            [{"face_no": 1, "color_histogram": "[1]", "texture_vector": "[1]", "shape_vector": "[1]"}],
+            [
+                {
+                    "face_no": 1,
+                    "color_histogram": "[NaN]",
+                    "texture_vector": "[1]",
+                    "shape_vector": "[1]",
+                }
+            ],
+            [
+                {
+                    "face_no": 1,
+                    "color_histogram": "[1]",
+                    "texture_vector": "[1]",
+                    "shape_vector": "[1]",
+                }
+            ],
         )
 
         self.assertIsNone(result)

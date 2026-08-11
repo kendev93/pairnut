@@ -84,7 +84,9 @@ def _read_config() -> dict[str, Any]:
 
 def _write_config(config: dict[str, Any]) -> None:
     path = model_config_path()
-    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def list_feature_models() -> list[FeatureModel]:
@@ -126,8 +128,10 @@ def download_model(model_id: str, urlopen_func=urlopen) -> Path:
     parsed_url = urlparse(model.download_url)
     if parsed_url.scheme != "https" or not parsed_url.netloc:
         raise ValueError("Model download URL must use HTTPS.")
-    if not model.sha256 or len(model.sha256) != 64 or any(
-        character not in "0123456789abcdefABCDEF" for character in model.sha256
+    if (
+        not model.sha256
+        or len(model.sha256) != 64
+        or any(character not in "0123456789abcdefABCDEF" for character in model.sha256)
     ):
         raise ValueError("Model download requires a valid SHA-256 checksum.")
 
@@ -139,7 +143,9 @@ def download_model(model_id: str, urlopen_func=urlopen) -> Path:
     try:
         with urlopen_func(model.download_url, timeout=60) as response:
             headers = getattr(response, "headers", None)
-            content_length = headers.get("Content-Length") if headers is not None else None
+            content_length = (
+                headers.get("Content-Length") if headers is not None else None
+            )
             if content_length is not None:
                 try:
                     declared_size = int(content_length)
@@ -208,7 +214,9 @@ def _resolve_active_model_id(active_model_id: str) -> str:
 
 
 def get_active_model_id() -> str:
-    active_model_id = str(_read_config().get("active_image_model_id") or BUILTIN_OPENCV_MODEL.model_id)
+    active_model_id = str(
+        _read_config().get("active_image_model_id") or BUILTIN_OPENCV_MODEL.model_id
+    )
     return _resolve_active_model_id(active_model_id)
 
 

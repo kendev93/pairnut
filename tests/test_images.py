@@ -78,12 +78,21 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(images[0]["face_no"], 1)
         self.assertEqual(images[0]["original_filename"], "NJS-01-1.JPG")
         self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/1.jpg")
-        self.assertEqual((get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(encoding="utf-8"), "image")
-        self.assertEqual(len(repositories.list_walnut_image_features(self.walnut_id)), 1)
+        self.assertEqual(
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(
+                encoding="utf-8"
+            ),
+            "image",
+        )
+        self.assertEqual(
+            len(repositories.list_walnut_image_features(self.walnut_id)), 1
+        )
         extract_features.assert_called_once_with(source)
 
         images_by_walnut = repositories.list_walnut_images_for_variety(self.variety_id)
-        self.assertEqual([row["face_no"] for row in images_by_walnut[self.walnut_id]], [1])
+        self.assertEqual(
+            [row["face_no"] for row in images_by_walnut[self.walnut_id]], [1]
+        )
 
     def test_import_walnut_images_replaces_existing_face(self) -> None:
         first = Path(self.tempdir.name) / "NJS-01-2.JPG"
@@ -102,7 +111,10 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/2.png")
 
     def test_replacement_never_deletes_image_outside_data_directory(self) -> None:
-        outside_path = Path(self.tempdir.name).parent / f"{Path(self.tempdir.name).name}-outside-image.txt"
+        outside_path = (
+            Path(self.tempdir.name).parent
+            / f"{Path(self.tempdir.name).name}-outside-image.txt"
+        )
         try:
             outside_path.write_text("must survive", encoding="utf-8")
             repositories.upsert_walnut_image(
@@ -159,7 +171,9 @@ class ImageImportTests(unittest.TestCase):
         self.assertTrue(delete_walnut_image(self.walnut_id, 3))
 
         self.assertEqual(repositories.list_walnut_images(self.walnut_id), [])
-        self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "3.jpg").exists())
+        self.assertFalse(
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "3.jpg").exists()
+        )
 
     def test_delete_walnut_image_cleans_record_when_file_is_missing(self) -> None:
         source = Path(self.tempdir.name) / "NJS-01-4.JPG"
@@ -201,11 +215,17 @@ class ImageImportTests(unittest.TestCase):
         images = repositories.list_walnut_images(self.walnut_id)
         self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/6.jpg")
         self.assertEqual(
-            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.jpg").read_text(encoding="utf-8"),
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.jpg").read_text(
+                encoding="utf-8"
+            ),
             "original",
         )
-        self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.png").exists())
-        self.assertEqual(len(repositories.list_walnut_image_features(self.walnut_id)), 1)
+        self.assertFalse(
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.png").exists()
+        )
+        self.assertEqual(
+            len(repositories.list_walnut_image_features(self.walnut_id)), 1
+        )
 
     def test_database_failure_does_not_leave_new_replacement_file(self) -> None:
         original = Path(self.tempdir.name) / "NJS-01-1.JPG"
@@ -226,9 +246,13 @@ class ImageImportTests(unittest.TestCase):
             result = import_walnut_images([replacement], self.variety_id)
 
         self.assertEqual(len(result.skipped), 1)
-        self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.png").exists())
+        self.assertFalse(
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.png").exists()
+        )
         self.assertEqual(
-            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(encoding="utf-8"),
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(
+                encoding="utf-8"
+            ),
             "original",
         )
 
@@ -284,17 +308,29 @@ class ImageImportTests(unittest.TestCase):
             import_walnut_images([source], self.variety_id)
         stored_file = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
 
-        with patch.object(repositories, "delete_walnut_image", side_effect=RuntimeError("database unavailable")), self.assertRaises(RuntimeError):
+        with (
+            patch.object(
+                repositories,
+                "delete_walnut_image",
+                side_effect=RuntimeError("database unavailable"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
             delete_walnut_image(self.walnut_id, 1)
 
         self.assertTrue(stored_file.exists())
         self.assertEqual(len(repositories.list_walnut_images(self.walnut_id)), 1)
 
     def test_image_delete_rejects_path_outside_data_directory(self) -> None:
-        outside = Path(self.tempdir.name).parent / f"{self.tempdir.name.rsplit('/', 1)[-1]}-outside.jpg"
+        outside = (
+            Path(self.tempdir.name).parent
+            / f"{self.tempdir.name.rsplit('/', 1)[-1]}-outside.jpg"
+        )
         outside.write_text("keep", encoding="utf-8")
         try:
-            repositories.upsert_walnut_image(self.walnut_id, 1, "bad.jpg", "../../" + outside.name)
+            repositories.upsert_walnut_image(
+                self.walnut_id, 1, "bad.jpg", "../../" + outside.name
+            )
 
             with self.assertRaises(ValueError):
                 delete_walnut_image(self.walnut_id, 1)

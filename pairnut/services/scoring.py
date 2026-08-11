@@ -48,9 +48,17 @@ def defect_penalty(defect_level_1: str, defect_level_2: str) -> float:
     return (penalty_1 + penalty_2) / 2.0
 
 
-def within_tolerance(base: dict, candidate: dict, tolerance_mm: float, multiplier: float = 1.0) -> bool:
-    if not math.isfinite(float(tolerance_mm)) or not math.isfinite(float(multiplier)) or multiplier <= 0:
-        raise ValueError("tolerance and multiplier must be finite; multiplier must be positive.")
+def within_tolerance(
+    base: dict, candidate: dict, tolerance_mm: float, multiplier: float = 1.0
+) -> bool:
+    if (
+        not math.isfinite(float(tolerance_mm))
+        or not math.isfinite(float(multiplier))
+        or multiplier <= 0
+    ):
+        raise ValueError(
+            "tolerance and multiplier must be finite; multiplier must be positive."
+        )
     screening_tolerance = tolerance_mm * multiplier
     return (
         abs(base["edge_mm"] - candidate["edge_mm"]) <= screening_tolerance
@@ -71,8 +79,12 @@ def build_score(base: dict, candidate: dict, tolerance_mm: float) -> dict[str, f
         + dimension_component(height_diff, tolerance_mm)
     ) / 3.0
     current_weight_bonus = weight_bonus(current_weight_diff)
-    current_defect_penalty = defect_penalty(base["defect_level"], candidate["defect_level"])
-    total_score = clamp((dimension_score * 0.8) + (current_weight_bonus * 0.2) - current_defect_penalty)
+    current_defect_penalty = defect_penalty(
+        base["defect_level"], candidate["defect_level"]
+    )
+    total_score = clamp(
+        (dimension_score * 0.8) + (current_weight_bonus * 0.2) - current_defect_penalty
+    )
 
     return {
         "total_score": total_score,
