@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import math
 
 from ..database import repositories
@@ -358,6 +359,84 @@ def lock_candidate_pair(
     return repositories.lock_pair(variety_id, walnut_id_1, walnut_id_2)
 
 
+def _select_non_overlapping_pairs(possible_pairs: list[PairMatch]) -> list[PairMatch]:
+    """Select a deterministic maximum-score matching for small candidate graphs.
+
+    Exact bitmask dynamic programming is practical for the usual small pairing
+    batch. Larger batches use the deterministic greedy fallback to avoid an
+    exponential memory/time spike.
+    """
+    if not possible_pairs:
+        return []
+
+    ordered_pairs = sorted(
+        possible_pairs,
+        key=lambda pair: (
+            -pair.candidate.total_score,
+            pair.candidate.weight_diff,
+            pair.walnut_id_1,
+            pair.walnut_id_2,
+        ),
+    )
+    unique_pairs: dict[tuple[int, int], PairMatch] = {}
+    for pair in ordered_pairs:
+        key = tuple(sorted((pair.walnut_id_1, pair.walnut_id_2)))
+        unique_pairs.setdefault(key, pair)
+
+    def greedy() -> list[PairMatch]:
+        used_ids: set[int] = set()
+        result: list[PairMatch] = []
+        for pair in ordered_pairs:
+            if pair.walnut_id_1 in used_ids or pair.walnut_id_2 in used_ids:
+                continue
+            used_ids.update((pair.walnut_id_1, pair.walnut_id_2))
+            result.append(pair)
+        return result
+
+    walnut_ids = sorted({walnut_id for pair in unique_pairs for walnut_id in pair})
+    if len(walnut_ids) > 20:
+        return greedy()
+
+    def better(
+        left: tuple[float, tuple[tuple[int, int], ...]],
+        right: tuple[float, tuple[tuple[int, int], ...]],
+    ) -> bool:
+        if left[0] > right[0] + 1e-9:
+            return True
+        if abs(left[0] - right[0]) <= 1e-9:
+            return left[1] < right[1]
+        return False
+
+    @lru_cache(maxsize=None)
+    def solve(mask: int) -> tuple[float, tuple[tuple[int, int], ...]]:
+        if mask == 0:
+            return 0.0, ()
+        lowest_bit = mask & -mask
+        left_index = lowest_bit.bit_length() - 1
+        left_id = walnut_ids[left_index]
+        best = solve(mask ^ lowest_bit)
+        remaining_mask = mask ^ lowest_bit
+        while remaining_mask:
+            right_bit = remaining_mask & -remaining_mask
+            right_index = right_bit.bit_length() - 1
+            right_id = walnut_ids[right_index]
+            pair = unique_pairs.get((left_id, right_id))
+            if pair is not None:
+                rest_score, rest_pairs = solve(mask ^ lowest_bit ^ right_bit)
+                pair_key = (left_id, right_id)
+                candidate = (
+                    rest_score + pair.candidate.total_score,
+                    tuple(sorted((*rest_pairs, pair_key))),
+                )
+                if better(candidate, best):
+                    best = candidate
+            remaining_mask ^= right_bit
+        return best
+
+    _, selected_keys = solve((1 << len(walnut_ids)) - 1)
+    return [unique_pairs[key] for key in selected_keys]
+
+
 def get_non_overlapping_pairs(
     variety_id: int,
     minimum_score: float = MIN_RECOMMENDATION_SCORE,
@@ -374,6 +453,7 @@ def get_non_overlapping_pairs(
         variety_id,
         limit=None,
         screening_multiplier=screening_multiplier,
+        minimum_score=normalized_minimum_score,
     )
     possible_pairs: list[PairMatch] = []
     for base_id, candidates in candidates_by_walnut.items():
@@ -383,19 +463,4 @@ def get_non_overlapping_pairs(
                 continue
             possible_pairs.append(PairMatch(left, right, candidate))
 
-    possible_pairs.sort(
-        key=lambda pair: (
-            -pair.candidate.total_score,
-            pair.candidate.weight_diff,
-            pair.walnut_id_1,
-            pair.walnut_id_2,
-        )
-    )
-    used_ids: set[int] = set()
-    result: list[PairMatch] = []
-    for pair in possible_pairs:
-        if pair.walnut_id_1 in used_ids or pair.walnut_id_2 in used_ids:
-            continue
-        used_ids.update((pair.walnut_id_1, pair.walnut_id_2))
-        result.append(pair)
-    return result
+    return _select_non_overlapping_pairs(possible_pairs)

@@ -40,6 +40,14 @@ def _safe_path_part(value: str) -> str:
     return cleaned.strip("._") or "walnut"
 
 
+def _resolve_stored_mesh_path(stored_path: str) -> Path:
+    root = get_meshes_dir().resolve()
+    candidate = (root / stored_path).resolve()
+    if candidate == root or not candidate.is_relative_to(root):
+        raise ValueError("3D 模型路径超出应用数据目录。")
+    return candidate
+
+
 def _serialize_vector(values: Iterable[float]) -> str:
     return json.dumps([round(float(value), 8) for value in values], separators=(",", ":"))
 
@@ -268,6 +276,8 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
     walnut = repositories.get_walnut(walnut_id)
     if walnut is None:
         raise ValueError("核桃不存在。")
+    if walnut["is_locked"]:
+        raise ValueError("已锁定的核桃不能修改 3D 模型，请先解除锁定。")
 
     feature = extract_mesh_features(source)
     meshes_root = get_meshes_dir()
@@ -275,24 +285,72 @@ def import_walnut_mesh(walnut_id: int, file_path: str | Path) -> int:
     target = meshes_root / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
     previous = repositories.get_walnut_mesh(walnut_id)
-    shutil.copy2(source, target)
-    mesh_id = repositories.upsert_walnut_mesh(walnut_id, source.name, relative_path.as_posix())
-    store_mesh_feature(mesh_id, feature)
+    target_existed = target.exists()
+    backup_path: Path | None = None
+    if target_existed:
+        backup_path = target.with_name(f".{target.name}.pairnut-backup")
+        shutil.copy2(target, backup_path)
+    try:
+        shutil.copy2(source, target)
+        mesh_id = repositories.upsert_walnut_mesh(walnut_id, source.name, relative_path.as_posix())
+        store_mesh_feature(mesh_id, feature)
+    except Exception:
+        if backup_path and backup_path.exists():
+            shutil.copy2(backup_path, target)
+        elif target.exists() and not target_existed:
+            target.unlink()
+        if previous is None:
+            repositories.delete_walnut_mesh(walnut_id)
+        else:
+            previous_mesh_id = repositories.upsert_walnut_mesh(
+                walnut_id,
+                previous["original_filename"],
+                previous["stored_path"],
+            )
+            previous_features = repositories.list_walnut_mesh_features(walnut_id, MESH_FEATURE_VERSION)
+            if previous_features:
+                repositories.upsert_walnut_mesh_feature(
+                    mesh_id=previous_mesh_id,
+                    feature_version=previous_features[0]["feature_version"],
+                    dimensions_vector=previous_features[0]["dimensions_vector"],
+                    shape_vector=previous_features[0]["shape_vector"],
+                )
+        raise
+    finally:
+        if backup_path and backup_path.exists():
+            backup_path.unlink()
     if previous:
-        old_path = meshes_root / previous["stored_path"]
+        old_path = _resolve_stored_mesh_path(previous["stored_path"])
         if old_path != target and old_path.exists():
             old_path.unlink()
     return mesh_id
 
 
 def delete_walnut_mesh(walnut_id: int) -> bool:
+    if repositories.get_active_lock_for_walnut(walnut_id):
+        raise ValueError("已锁定的核桃不能删除 3D 模型，请先解除锁定。")
     mesh = repositories.get_walnut_mesh(walnut_id)
     if mesh is None:
         return False
-    mesh_path = get_meshes_dir() / mesh["stored_path"]
+    mesh_path = _resolve_stored_mesh_path(mesh["stored_path"])
+    backup_path: Path | None = None
     if mesh_path.exists():
-        mesh_path.unlink()
-    repositories.delete_walnut_mesh(walnut_id)
+        backup_path = mesh_path.with_name(f".{mesh_path.name}.pairnut-delete")
+        shutil.move(mesh_path, backup_path)
+    try:
+        repositories.delete_walnut_mesh(walnut_id)
+    except Exception:
+        if backup_path and backup_path.exists():
+            shutil.move(backup_path, mesh_path)
+        raise
+    finally:
+        if backup_path and backup_path.exists():
+            backup_path.unlink()
+    if mesh_path.parent.exists():
+        try:
+            mesh_path.parent.rmdir()
+        except OSError:
+            pass
     return True
 
 

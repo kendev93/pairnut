@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pairnut.database import repositories
 from pairnut.database.connection import get_meshes_dir
@@ -11,6 +12,7 @@ from pairnut.database.schema import init_database
 from pairnut.domain.models import DefectLevel, SerialMode
 from pairnut.services.mesh_features import (
     MESH_FEATURE_VERSION,
+    delete_walnut_mesh,
     extract_mesh_features,
     feature_similarity,
     import_walnut_mesh,
@@ -146,3 +148,72 @@ class MeshFeatureTests(unittest.TestCase):
 
         self.assertIsNone(repositories.get_walnut_mesh(self.w1))
         self.assertFalse((get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj").exists())
+
+    def test_database_failure_does_not_leave_copied_mesh(self) -> None:
+        source = self._write_obj("NJS-01.obj")
+
+        with patch.object(repositories, "upsert_walnut_mesh", side_effect=RuntimeError("database unavailable")):
+            with self.assertRaises(RuntimeError):
+                import_walnut_mesh(self.w1, source)
+
+        self.assertIsNone(repositories.get_walnut_mesh(self.w1))
+        self.assertFalse((get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj").exists())
+
+    def test_failed_mesh_replacement_restores_previous_record_and_file(self) -> None:
+        source = self._write_obj("NJS-01.obj")
+        import_walnut_mesh(self.w1, source)
+        stored_path = get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj"
+        original_content = stored_path.read_text(encoding="utf-8")
+        source.write_text(TETRA_OBJ + "# replacement", encoding="utf-8")
+
+        with patch("pairnut.services.mesh_features.store_mesh_feature", side_effect=RuntimeError("feature store failed")):
+            with self.assertRaises(RuntimeError):
+                import_walnut_mesh(self.w1, source)
+
+        mesh = repositories.get_walnut_mesh(self.w1)
+        self.assertIsNotNone(mesh)
+        assert mesh is not None
+        self.assertEqual(mesh["original_filename"], "NJS-01.obj")
+        self.assertEqual(stored_path.read_text(encoding="utf-8"), original_content)
+
+    def test_locked_walnut_cannot_import_mesh(self) -> None:
+        partner_id = self._create_walnut("NJS-03")
+        repositories.lock_pair(self.variety_id, self.w1, partner_id)
+        source = self._write_obj("NJS-01.obj")
+
+        with self.assertRaises(ValueError):
+            import_walnut_mesh(self.w1, source)
+
+        self.assertIsNone(repositories.get_walnut_mesh(self.w1))
+
+    def test_locked_walnut_cannot_delete_mesh(self) -> None:
+        import_walnut_mesh(self.w1, self._write_obj("NJS-01.obj"))
+        partner_id = self._create_walnut("NJS-03")
+        repositories.lock_pair(self.variety_id, self.w1, partner_id)
+
+        with self.assertRaises(ValueError):
+            delete_walnut_mesh(self.w1)
+
+    def test_database_failure_restores_deleted_mesh_file(self) -> None:
+        import_walnut_mesh(self.w1, self._write_obj("NJS-01.obj"))
+        stored_file = get_meshes_dir() / f"{self.w1}-NJS-01" / "source.obj"
+
+        with patch.object(repositories, "delete_walnut_mesh", side_effect=RuntimeError("database unavailable")):
+            with self.assertRaises(RuntimeError):
+                delete_walnut_mesh(self.w1)
+
+        self.assertTrue(stored_file.exists())
+        self.assertIsNotNone(repositories.get_walnut_mesh(self.w1))
+
+    def test_mesh_delete_rejects_path_outside_data_directory(self) -> None:
+        outside = Path(self.tempdir.name).parent / f"{self.tempdir.name.rsplit('/', 1)[-1]}-outside.obj"
+        outside.write_text("keep", encoding="utf-8")
+        try:
+            repositories.upsert_walnut_mesh(self.w1, "bad.obj", "../../" + outside.name)
+
+            with self.assertRaises(ValueError):
+                delete_walnut_mesh(self.w1)
+
+            self.assertTrue(outside.exists())
+        finally:
+            outside.unlink(missing_ok=True)

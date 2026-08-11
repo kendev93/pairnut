@@ -385,7 +385,15 @@ class ImagePreviewDialog(QDialog):
     def delete_image(self) -> None:
         if QMessageBox.question(self, "删除图片", "确定删除这张图片吗？") != QMessageBox.Yes:
             return
-        delete_walnut_image(self.walnut_id, self.face_no)
+        try:
+            delete_walnut_image(self.walnut_id, self.face_no)
+        except Exception as exc:
+            main_window = self.parent()
+            if main_window is not None and hasattr(main_window, "show_error"):
+                main_window.show_error(f"删除图片失败: {exc}")
+            else:
+                QMessageBox.warning(self, "删除图片失败", str(exc))
+            return
         main_window = self.parent()
         if main_window is not None and hasattr(main_window, "refresh_all"):
             main_window.refresh_all()

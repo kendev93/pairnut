@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from pairnut.database import repositories
-from pairnut.database.connection import get_images_dir, get_meshes_dir
+from pairnut.database.connection import get_data_dir, get_images_dir, get_meshes_dir
 from pairnut.database.schema import init_database
 from pairnut.services.data_cleanup import delete_variety_data, delete_walnut_data
 
@@ -91,6 +92,33 @@ class DataCleanupTests(unittest.TestCase):
         self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
         self.assertIsNotNone(repositories.get_walnut(partner_id))
         self.assertEqual(len(repositories.list_locked_pairs(self.variety_id)), 1)
+
+    def test_asset_move_failure_keeps_walnut_and_asset(self) -> None:
+        image_path = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
+        image_path.parent.mkdir(parents=True)
+        image_path.write_bytes(b"image")
+        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
+
+        with patch("pairnut.services.data_cleanup.shutil.move", side_effect=OSError("disk error")):
+            with self.assertRaises(OSError):
+                delete_walnut_data(self.walnut_id)
+
+        self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
+        self.assertTrue(image_path.exists())
+
+    def test_database_delete_failure_restores_staged_assets(self) -> None:
+        image_path = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
+        image_path.parent.mkdir(parents=True)
+        image_path.write_bytes(b"image")
+        repositories.upsert_walnut_image(self.walnut_id, 1, "NJS-01-1.jpg", f"{self.walnut_id}-NJS-01/1.jpg")
+
+        with patch.object(repositories, "delete_walnut", side_effect=RuntimeError("database unavailable")):
+            with self.assertRaises(RuntimeError):
+                delete_walnut_data(self.walnut_id)
+
+        self.assertIsNotNone(repositories.get_walnut(self.walnut_id))
+        self.assertTrue(image_path.exists())
+        self.assertEqual(list(get_data_dir().glob(".pairnut-delete-*")), [])
 
 
 if __name__ == "__main__":

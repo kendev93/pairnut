@@ -166,3 +166,100 @@ class ImageImportTests(unittest.TestCase):
         )
         self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.png").exists())
         self.assertEqual(len(repositories.list_walnut_image_features(self.walnut_id)), 1)
+
+    def test_database_failure_does_not_leave_new_replacement_file(self) -> None:
+        original = Path(self.tempdir.name) / "NJS-01-1.JPG"
+        replacement = Path(self.tempdir.name) / "NJS-01-1.PNG"
+        original.write_text("original", encoding="utf-8")
+        replacement.write_text("replacement", encoding="utf-8")
+
+        with self._feature_patches():
+            import_walnut_images([original], self.variety_id)
+        with (
+            self._feature_patches(),
+            patch.object(
+                repositories,
+                "upsert_walnut_image_with_feature",
+                side_effect=RuntimeError("database unavailable"),
+            ),
+        ):
+            result = import_walnut_images([replacement], self.variety_id)
+
+        self.assertEqual(len(result.skipped), 1)
+        self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.png").exists())
+        self.assertEqual(
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(encoding="utf-8"),
+            "original",
+        )
+
+    def test_batch_import_loads_existing_images_once(self) -> None:
+        first = Path(self.tempdir.name) / "NJS-01-1.JPG"
+        second = Path(self.tempdir.name) / "NJS-01-2.JPG"
+        first.write_text("first", encoding="utf-8")
+        second.write_text("second", encoding="utf-8")
+
+        with (
+            self._feature_patches(),
+            patch.object(
+                repositories,
+                "list_walnut_images_for_variety",
+                wraps=repositories.list_walnut_images_for_variety,
+            ) as list_images,
+        ):
+            result = import_walnut_images([first, second], self.variety_id)
+
+        self.assertEqual(result.imported_count, 2)
+        self.assertEqual(list_images.call_count, 1)
+
+    def test_locked_walnut_cannot_import_or_delete_images(self) -> None:
+        partner_id = repositories.create_walnut(
+            {
+                "variety_id": self.variety_id,
+                "serial_mode": SerialMode.MANUAL.value,
+                "serial_no": "NJS-02",
+                "edge_mm": 40,
+                "belly_mm": 40,
+                "height_mm": 40,
+                "weight_g": 30,
+                "defect_level": DefectLevel.NONE.value,
+                "notes": None,
+            }
+        )
+        repositories.lock_pair(self.variety_id, self.walnut_id, partner_id)
+        source = Path(self.tempdir.name) / "NJS-01-1.JPG"
+        source.write_text("image", encoding="utf-8")
+
+        with self._feature_patches():
+            result = import_walnut_images([source], self.variety_id)
+
+        self.assertEqual(result.imported_count, 0)
+        self.assertIn("已锁定", result.skipped[0])
+        with self.assertRaises(ValueError):
+            delete_walnut_image(self.walnut_id, 1)
+
+    def test_database_failure_restores_deleted_image_file(self) -> None:
+        source = Path(self.tempdir.name) / "NJS-01-1.JPG"
+        source.write_text("image", encoding="utf-8")
+        with self._feature_patches():
+            import_walnut_images([source], self.variety_id)
+        stored_file = get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg"
+
+        with patch.object(repositories, "delete_walnut_image", side_effect=RuntimeError("database unavailable")):
+            with self.assertRaises(RuntimeError):
+                delete_walnut_image(self.walnut_id, 1)
+
+        self.assertTrue(stored_file.exists())
+        self.assertEqual(len(repositories.list_walnut_images(self.walnut_id)), 1)
+
+    def test_image_delete_rejects_path_outside_data_directory(self) -> None:
+        outside = Path(self.tempdir.name).parent / f"{self.tempdir.name.rsplit('/', 1)[-1]}-outside.jpg"
+        outside.write_text("keep", encoding="utf-8")
+        try:
+            repositories.upsert_walnut_image(self.walnut_id, 1, "bad.jpg", "../../" + outside.name)
+
+            with self.assertRaises(ValueError):
+                delete_walnut_image(self.walnut_id, 1)
+
+            self.assertTrue(outside.exists())
+        finally:
+            outside.unlink(missing_ok=True)

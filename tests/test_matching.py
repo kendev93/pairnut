@@ -7,9 +7,11 @@ from unittest.mock import patch
 
 from pairnut.database import repositories
 from pairnut.database.schema import init_database
+from pairnut.domain.models import CandidateMatch, PairMatch
 from pairnut.services.image_features import OPENCV_FEATURE_VERSION
 from pairnut.services.matching import (
     _combine_optional_evidence,
+    _select_non_overlapping_pairs,
     get_candidates_for_variety,
     get_candidates_for_walnut,
     get_matching_view_data,
@@ -302,3 +304,34 @@ class MatchingTests(unittest.TestCase):
 
         self.assertEqual(len(used_ids), len(set(used_ids)))
         self.assertEqual(len(result), 2)
+
+    def test_non_overlapping_selection_maximizes_total_score(self) -> None:
+        def pair(left: int, right: int, score: float) -> PairMatch:
+            return PairMatch(
+                left,
+                right,
+                CandidateMatch(
+                    walnut_id=right,
+                    serial_no=f"N-{right}",
+                    total_score=score,
+                    dimension_score=score,
+                    weight_bonus=0.0,
+                    defect_penalty=0.0,
+                    edge_diff=0.0,
+                    belly_diff=0.0,
+                    height_diff=0.0,
+                    weight_diff=0.0,
+                    defect_level="none",
+                ),
+            )
+
+        result = _select_non_overlapping_pairs(
+            [
+                pair(1, 2, 100.0),
+                pair(1, 3, 95.0),
+                pair(2, 4, 94.0),
+                pair(3, 4, 1.0),
+            ]
+        )
+
+        self.assertEqual({(item.walnut_id_1, item.walnut_id_2) for item in result}, {(1, 3), (2, 4)})
