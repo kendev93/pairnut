@@ -105,6 +105,46 @@ class MatchingTests(unittest.TestCase):
         candidate_ids = [item.walnut_id for item in result]
         self.assertNotIn(self.w2, candidate_ids)
 
+    def test_lock_pair_rejects_walnuts_from_different_varieties(self) -> None:
+        other_variety_id = repositories.create_variety("官帽", "GM", 1.0)
+        other_walnut_id = repositories.create_walnut(
+            {
+                "variety_id": other_variety_id,
+                "serial_mode": "manual",
+                "serial_no": "GM-0001",
+                "edge_mm": 40.0,
+                "belly_mm": 42.0,
+                "height_mm": 38.0,
+                "weight_g": 52.0,
+                "defect_level": "none",
+                "notes": None,
+            }
+        )
+
+        with self.assertRaises(ValueError):
+            repositories.lock_pair(self.variety_id, self.w1, other_walnut_id)
+
+        self.assertIsNone(repositories.get_active_lock_for_walnut(self.w1))
+
+    def test_blacklist_pair_rejects_walnuts_from_different_varieties(self) -> None:
+        other_variety_id = repositories.create_variety("官帽", "GM", 1.0)
+        other_walnut_id = repositories.create_walnut(
+            {
+                "variety_id": other_variety_id,
+                "serial_mode": "manual",
+                "serial_no": "GM-0001",
+                "edge_mm": 40.0,
+                "belly_mm": 42.0,
+                "height_mm": 38.0,
+                "weight_g": 52.0,
+                "defect_level": "none",
+                "notes": None,
+            }
+        )
+
+        with self.assertRaises(ValueError):
+            repositories.create_blacklist_pair(self.variety_id, self.w1, other_walnut_id)
+
     def test_candidates_include_mesh_similarity_when_available(self) -> None:
         mesh_id_1 = repositories.upsert_walnut_mesh(self.w1, "w1.obj", "w1/source.obj")
         mesh_id_2 = repositories.upsert_walnut_mesh(self.w2, "w2.obj", "w2/source.obj")

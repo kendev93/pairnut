@@ -8,7 +8,7 @@ import re
 import shutil
 
 from ..database import get_images_dir, repositories
-from .image_features import store_opencv_features
+from .image_features import OPENCV_FEATURE_VERSION, extract_opencv_features, serialize_vector
 
 
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic"}
@@ -65,17 +65,45 @@ def import_walnut_images(file_paths: list[str | Path], variety_id: int) -> Batch
         walnut_id = int(walnut["id"])
         relative_path = Path(f"{walnut_id}-{_safe_path_part(parsed.serial_no)}") / f"{parsed.face_no}{source.suffix.lower()}"
         target = images_root / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
         existing_images = repositories.list_walnut_images(walnut_id)
         existing_image = next((image for image in existing_images if int(image["face_no"]) == parsed.face_no), None)
-        shutil.copy2(source, target)
-        image_id = repositories.upsert_walnut_image(
-            walnut_id,
-            parsed.face_no,
-            source.name,
-            relative_path.as_posix(),
-        )
-        store_opencv_features(image_id, target)
+
+        try:
+            features = extract_opencv_features(source)
+        except Exception as exc:
+            result.skipped.append(f"{source.name}: 图片特征提取失败：{exc}")
+            continue
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        backup_path: Path | None = None
+        try:
+            if target.exists():
+                backup_path = target.with_name(f".{target.name}.pairnut-backup")
+                shutil.copy2(target, backup_path)
+            shutil.copy2(source, target)
+            repositories.upsert_walnut_image_with_feature(
+                walnut_id=walnut_id,
+                face_no=parsed.face_no,
+                original_filename=source.name,
+                stored_path=relative_path.as_posix(),
+                feature_version=OPENCV_FEATURE_VERSION,
+                color_histogram=serialize_vector(features.color_histogram),
+                texture_vector=serialize_vector(features.texture_vector),
+                shape_vector=serialize_vector(features.shape_vector),
+            )
+        except Exception as exc:
+            if backup_path and backup_path.exists():
+                shutil.copy2(backup_path, target)
+            elif target.exists() and existing_image is None:
+                target.unlink()
+            result.skipped.append(f"{source.name}: 导入失败：{exc}")
+            if backup_path and backup_path.exists():
+                backup_path.unlink()
+            continue
+        finally:
+            if backup_path and backup_path.exists():
+                backup_path.unlink()
+
         if existing_image:
             old_path = images_root / existing_image["stored_path"]
             if old_path != target and old_path.exists():

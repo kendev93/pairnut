@@ -120,6 +120,8 @@ def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
 
 
 def delete_walnut(walnut_id: int) -> None:
+    if get_active_lock_for_walnut(walnut_id):
+        raise ValueError("Cannot delete a locked walnut.")
     with db_connection() as conn:
         conn.execute("DELETE FROM walnuts WHERE id = ?", (walnut_id,))
 
@@ -215,6 +217,54 @@ def upsert_walnut_image_feature(
         )
         row = cursor.execute("SELECT id FROM walnut_image_features WHERE image_id = ?", (image_id,)).fetchone()
         return int(row["id"])
+
+
+def upsert_walnut_image_with_feature(
+    walnut_id: int,
+    face_no: int,
+    original_filename: str,
+    stored_path: str,
+    feature_version: str,
+    color_histogram: str,
+    texture_vector: str,
+    shape_vector: str,
+) -> int:
+    """Upsert an image and its feature row in one database transaction."""
+    timestamp = now_str()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO walnut_images (walnut_id, face_no, original_filename, stored_path, imported_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(walnut_id, face_no) DO UPDATE SET
+                original_filename = excluded.original_filename,
+                stored_path = excluded.stored_path,
+                imported_at = excluded.imported_at
+            """,
+            (walnut_id, face_no, original_filename, stored_path, timestamp),
+        )
+        image = cursor.execute(
+            "SELECT id FROM walnut_images WHERE walnut_id = ? AND face_no = ?",
+            (walnut_id, face_no),
+        ).fetchone()
+        image_id = int(image["id"])
+        cursor.execute(
+            """
+            INSERT INTO walnut_image_features (
+                image_id, feature_version, color_histogram, texture_vector, shape_vector, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(image_id) DO UPDATE SET
+                feature_version = excluded.feature_version,
+                color_histogram = excluded.color_histogram,
+                texture_vector = excluded.texture_vector,
+                shape_vector = excluded.shape_vector,
+                created_at = excluded.created_at
+            """,
+            (image_id, feature_version, color_histogram, texture_vector, shape_vector, timestamp),
+        )
+        return image_id
 
 
 def list_walnut_images(walnut_id: int) -> list[dict[str, Any]]:
@@ -398,6 +448,7 @@ def lock_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int) -> int:
     timestamp = now_str()
     with db_connection() as conn:
         cursor = conn.cursor()
+        _validate_pair_variety(cursor, variety_id, left, right)
         existing = cursor.execute(
             """
             SELECT id FROM locked_pairs
@@ -407,7 +458,19 @@ def lock_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int) -> int:
         ).fetchone()
         if existing:
             return int(existing["id"])
-        if get_active_lock_for_walnut(left) or get_active_lock_for_walnut(right):
+        active_lock = cursor.execute(
+            """
+            SELECT id FROM locked_pairs
+            WHERE is_active = 1
+              AND (
+                  walnut_id_1 IN (?, ?)
+                  OR walnut_id_2 IN (?, ?)
+              )
+            LIMIT 1
+            """,
+            (left, right, left, right),
+        ).fetchone()
+        if active_lock:
             raise ValueError("One of the walnuts is already locked.")
         cursor.execute(
             """
@@ -449,6 +512,7 @@ def create_blacklist_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int, r
     left, right = normalize_pair(walnut_id_1, walnut_id_2)
     with db_connection() as conn:
         cursor = conn.cursor()
+        _validate_pair_variety(cursor, variety_id, left, right)
         cursor.execute(
             """
             INSERT OR IGNORE INTO pair_blacklist (
@@ -468,6 +532,15 @@ def create_blacklist_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int, r
             (left, right),
         ).fetchone()
         return int(row["id"])
+
+
+def _validate_pair_variety(cursor, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
+    rows = cursor.execute(
+        "SELECT id, variety_id FROM walnuts WHERE id IN (?, ?)",
+        (walnut_id_1, walnut_id_2),
+    ).fetchall()
+    if len(rows) != 2 or any(row["variety_id"] != variety_id for row in rows):
+        raise ValueError("Both walnuts must exist in the selected variety.")
 
 
 def list_blacklist_pairs(variety_id: int | None = None) -> list[dict[str, Any]]:

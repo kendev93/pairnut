@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from pairnut.database import repositories
 from pairnut.database.connection import get_images_dir
 from pairnut.database.schema import init_database
 from pairnut.domain.models import DefectLevel, SerialMode
+from pairnut.services.image_features import ImageFeatures
 from pairnut.services.images import delete_walnut_image, import_walnut_images, parse_image_filename
 
 
@@ -37,6 +39,18 @@ class ImageImportTests(unittest.TestCase):
         os.environ.pop("PAIRNUT_DATA_DIR", None)
         self.tempdir.cleanup()
 
+    @contextmanager
+    def _feature_patches(self):
+        with patch(
+            "pairnut.services.images.extract_opencv_features",
+            return_value=ImageFeatures(
+                color_histogram=[1.0],
+                texture_vector=[1.0],
+                shape_vector=[1.0],
+            ),
+        ) as extract_features:
+            yield extract_features
+
     def test_parse_image_filename_uses_last_separator_as_face_number(self) -> None:
         parsed = parse_image_filename("NJS-01-6.JPG")
 
@@ -48,7 +62,7 @@ class ImageImportTests(unittest.TestCase):
         source = Path(self.tempdir.name) / "NJS-01-1.JPG"
         source.write_text("image", encoding="utf-8")
 
-        with patch("pairnut.services.images.store_opencv_features") as store_features:
+        with self._feature_patches() as extract_features:
             result = import_walnut_images([source], self.variety_id)
 
         self.assertEqual(result.imported_count, 1)
@@ -61,7 +75,8 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(images[0]["original_filename"], "NJS-01-1.JPG")
         self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/1.jpg")
         self.assertEqual((get_images_dir() / f"{self.walnut_id}-NJS-01" / "1.jpg").read_text(encoding="utf-8"), "image")
-        store_features.assert_called_once()
+        self.assertEqual(len(repositories.list_walnut_image_features(self.walnut_id)), 1)
+        extract_features.assert_called_once_with(source)
 
     def test_import_walnut_images_replaces_existing_face(self) -> None:
         first = Path(self.tempdir.name) / "NJS-01-2.JPG"
@@ -69,7 +84,7 @@ class ImageImportTests(unittest.TestCase):
         first.write_text("first", encoding="utf-8")
         second.write_text("second", encoding="utf-8")
 
-        with patch("pairnut.services.images.store_opencv_features"):
+        with self._feature_patches():
             import_walnut_images([first], self.variety_id)
             result = import_walnut_images([second], self.variety_id)
 
@@ -95,7 +110,7 @@ class ImageImportTests(unittest.TestCase):
     def test_delete_walnut_image_removes_file_and_database_record(self) -> None:
         source = Path(self.tempdir.name) / "NJS-01-3.JPG"
         source.write_text("image", encoding="utf-8")
-        with patch("pairnut.services.images.store_opencv_features"):
+        with self._feature_patches():
             import_walnut_images([source], self.variety_id)
 
         self.assertTrue(delete_walnut_image(self.walnut_id, 3))
@@ -106,7 +121,7 @@ class ImageImportTests(unittest.TestCase):
     def test_delete_walnut_image_cleans_record_when_file_is_missing(self) -> None:
         source = Path(self.tempdir.name) / "NJS-01-4.JPG"
         source.write_text("image", encoding="utf-8")
-        with patch("pairnut.services.images.store_opencv_features"):
+        with self._feature_patches():
             import_walnut_images([source], self.variety_id)
         stored_file = get_images_dir() / f"{self.walnut_id}-NJS-01" / "4.jpg"
         stored_file.unlink()
@@ -114,3 +129,37 @@ class ImageImportTests(unittest.TestCase):
         self.assertTrue(delete_walnut_image(self.walnut_id, 4))
 
         self.assertEqual(repositories.list_walnut_images(self.walnut_id), [])
+
+    def test_invalid_image_is_skipped_without_persisting_record_or_file(self) -> None:
+        source = Path(self.tempdir.name) / "NJS-01-5.JPG"
+        source.write_text("not an image", encoding="utf-8")
+
+        result = import_walnut_images([source], self.variety_id)
+
+        self.assertEqual(result.imported_count, 0)
+        self.assertEqual(result.replaced_count, 0)
+        self.assertEqual(len(result.skipped), 1)
+        self.assertEqual(repositories.list_walnut_images(self.walnut_id), [])
+        image_dir = get_images_dir() / f"{self.walnut_id}-NJS-01"
+        self.assertFalse((image_dir / "5.jpg").exists())
+        self.assertFalse(image_dir.exists())
+
+    def test_invalid_replacement_keeps_existing_image_and_features(self) -> None:
+        original = Path(self.tempdir.name) / "NJS-01-6.JPG"
+        replacement = Path(self.tempdir.name) / "NJS-01-6.PNG"
+        original.write_text("original", encoding="utf-8")
+        replacement.write_text("not an image", encoding="utf-8")
+
+        with self._feature_patches():
+            import_walnut_images([original], self.variety_id)
+        result = import_walnut_images([replacement], self.variety_id)
+
+        self.assertEqual(len(result.skipped), 1)
+        images = repositories.list_walnut_images(self.walnut_id)
+        self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/6.jpg")
+        self.assertEqual(
+            (get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.jpg").read_text(encoding="utf-8"),
+            "original",
+        )
+        self.assertFalse((get_images_dir() / f"{self.walnut_id}-NJS-01" / "6.png").exists())
+        self.assertEqual(len(repositories.list_walnut_image_features(self.walnut_id)), 1)

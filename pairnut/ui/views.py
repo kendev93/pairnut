@@ -43,6 +43,7 @@ from shiboken6 import isValid
 
 from ..database import get_data_dir, get_images_dir, get_models_dir, repositories
 from ..domain.models import DefectLevel, SerialMode
+from ..services.data_cleanup import delete_variety_data, delete_walnut_data
 from ..services.images import delete_walnut_image, import_walnut_images
 from ..services.matching import get_candidates_for_variety
 from ..services.mesh_features import import_walnut_mesh
@@ -991,7 +992,7 @@ class VarietyTab(QWidget):
         if QMessageBox.question(self, "删除品种", "删除品种会同时删除该品种下的核桃数据，继续吗？") != QMessageBox.Yes:
             return
         try:
-            repositories.delete_variety(variety_id)
+            delete_variety_data(variety_id)
             self.window.show_message("品种已删除")
             self.window.refresh_all()
         except Exception as exc:
@@ -1197,7 +1198,7 @@ class WalnutTab(VarietyScopedWidget):
         if QMessageBox.question(self, "删除核桃", "确定删除这颗核桃吗？") != QMessageBox.Yes:
             return
         try:
-            repositories.delete_walnut(walnut_id)
+            delete_walnut_data(walnut_id)
             self.window.show_message("核桃已删除")
             self.window.refresh_all()
         except Exception as exc:
