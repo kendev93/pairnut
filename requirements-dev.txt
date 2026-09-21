@@ -1,4 +1,4 @@
 -r requirements.txt
 pytest-cov>=7.1.0
-ruff>=0.16.7
-types-networkx>=3.6.1.20260903
+ruff>=0.16.8
+types-networkx>=3.6.1.20260911
