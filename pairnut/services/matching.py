@@ -14,11 +14,13 @@ from .image_features import (
     OPENCV_FEATURE_VERSION,
     WalnutImageSimilarity,
     image_similarity_from_features,
+    parse_image_feature_row,
 )
 from .mesh_features import (
     MESH_FEATURE_VERSION,
     WalnutMeshSimilarity,
     mesh_similarity_from_features,
+    parse_mesh_feature_row,
 )
 from .scoring import MIN_RECOMMENDATION_SCORE, build_score, within_tolerance
 
@@ -117,6 +119,25 @@ def _pair_key(walnut_id_1: int, walnut_id_2: int) -> tuple[int, int]:
     )
 
 
+def _parsed_rows_by_walnut(
+    rows: dict[int, list[dict]],
+    parse_row,
+) -> dict[int, list[dict]]:
+    """Parse each feature row only once per walnut.
+
+    Every pair comparison reuses the same rows, so parsing up front keeps a
+    matching pass linear in the number of stored features.
+    """
+    parsed_rows: dict[int, list[dict]] = {}
+    for walnut_id, walnut_rows in rows.items():
+        usable_rows = [
+            parsed for parsed in map(parse_row, walnut_rows) if parsed is not None
+        ]
+        if usable_rows:
+            parsed_rows[int(walnut_id)] = usable_rows
+    return parsed_rows
+
+
 def _load_matching_snapshot(variety_id: int) -> _MatchingSnapshot:
     walnuts = repositories.list_walnuts(variety_id=variety_id, include_locked=True)
     blacklist = frozenset(
@@ -126,13 +147,19 @@ def _load_matching_snapshot(variety_id: int) -> _MatchingSnapshot:
     return _MatchingSnapshot(
         walnuts=walnuts,
         blacklisted_pairs=blacklist,
-        image_features=repositories.list_walnut_image_features_for_variety(
-            variety_id,
-            OPENCV_FEATURE_VERSION,
+        image_features=_parsed_rows_by_walnut(
+            repositories.list_walnut_image_features_for_variety(
+                variety_id,
+                OPENCV_FEATURE_VERSION,
+            ),
+            parse_image_feature_row,
         ),
-        mesh_features=repositories.list_walnut_mesh_features_for_variety(
-            variety_id,
-            MESH_FEATURE_VERSION,
+        mesh_features=_parsed_rows_by_walnut(
+            repositories.list_walnut_mesh_features_for_variety(
+                variety_id,
+                MESH_FEATURE_VERSION,
+            ),
+            parse_mesh_feature_row,
         ),
     )
 

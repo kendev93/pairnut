@@ -8,7 +8,7 @@ from ..database import repositories
 def next_serial_no(variety_id: int) -> str:
     variety = repositories.get_variety(variety_id)
     if variety is None:
-        raise ValueError("Variety not found.")
+        raise ValueError("品种不存在，无法生成编号。")
     prefix = variety["code_prefix"].strip().upper()
     walnuts = repositories.list_walnuts(variety_id=variety_id, include_locked=True)
     max_value = 0

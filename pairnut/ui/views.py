@@ -1577,11 +1577,14 @@ class MatchingTab(VarietyScopedWidget):
                 else active_lock["walnut_id_1"]
             )
             partner = walnuts_by_id.get(int(partner_id))
+            partner_label = (
+                partner["serial_no"] if partner is not None else f"核桃 {partner_id}"
+            )
             lock_card = create_candidate_card()
             lock_layout = QVBoxLayout(lock_card)
             lock_layout.setContentsMargins(16, 14, 16, 14)
             lock_top_row = QHBoxLayout()
-            lock_top_row.addWidget(QLabel(f"已锁定配对：{partner['serial_no']}"))
+            lock_top_row.addWidget(QLabel(f"已锁定配对：{partner_label}"))
             unlock_button = QPushButton("解除锁定")
             unlock_button.clicked.connect(
                 lambda _=False, pair_id=active_lock["id"]: self._unlock_pair(pair_id)
@@ -1725,7 +1728,11 @@ class MatchingTab(VarietyScopedWidget):
             self.window.show_error(f"锁定失败: {exc}")
 
     def _unlock_pair(self, pair_id: int) -> None:
-        repositories.unlock_pair(pair_id)
+        try:
+            repositories.unlock_pair(pair_id)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            self.window.show_error(f"解除锁定失败: {exc}")
+            return
         self.window.show_message("配对已解除锁定")
         self.window.refresh_active()
 

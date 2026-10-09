@@ -9,7 +9,7 @@ from pairnut.database import repositories
 from pairnut.database.connection import db_connection
 from pairnut.database.schema import init_database
 from pairnut.domain.models import CandidateMatch, PairMatch
-from pairnut.services.image_features import OPENCV_FEATURE_VERSION
+from pairnut.services.image_features import OPENCV_FEATURE_VERSION, deserialize_vector
 from pairnut.services.matching import (
     _combine_optional_evidence,
     _select_non_overlapping_pairs,
@@ -191,6 +191,14 @@ class MatchingTests(unittest.TestCase):
         self.assertTrue(repositories.delete_blacklist_pair(blacklist_id))
         repositories.lock_pair(self.variety_id, self.w1, self.w2)
 
+    def test_locking_a_locked_walnut_reports_localized_message(self) -> None:
+        repositories.lock_pair(self.variety_id, self.w1, self.w2)
+
+        with self.assertRaises(ValueError) as captured:
+            repositories.lock_pair(self.variety_id, self.w1, self.w3)
+
+        self.assertIn("锁定", str(captured.exception))
+
     def test_locked_walnut_cannot_be_edited(self) -> None:
         repositories.lock_pair(self.variety_id, self.w1, self.w2)
 
@@ -312,6 +320,56 @@ class MatchingTests(unittest.TestCase):
 
         self.assertIsNotNone(candidate.image_similarity)
         self.assertEqual(candidate.image_matched_faces, 1)
+
+    def test_malformed_image_feature_rows_do_not_break_candidates(self) -> None:
+        """Rows with unusable vectors are dropped by the up-front parsing step."""
+        for walnut_id in (self.w1, self.w2):
+            image_id = repositories.upsert_walnut_image(
+                walnut_id,
+                1,
+                f"{walnut_id}-1.jpg",
+                f"{walnut_id}/1.jpg",
+            )
+            repositories.upsert_walnut_image_feature(
+                image_id=image_id,
+                feature_version=OPENCV_FEATURE_VERSION,
+                color_histogram="not-json",
+                texture_vector="[1,0]",
+                shape_vector="[1,0]",
+            )
+
+        result = get_candidates_for_walnut(self.w1)
+        candidate = next(item for item in result if item.walnut_id == self.w2)
+
+        self.assertIsNone(candidate.image_similarity)
+        self.assertEqual(candidate.image_matched_faces, 0)
+
+    def test_parsed_snapshot_vectors_are_reused_by_later_comparisons(self) -> None:
+        """Feature rows are parsed once per snapshot, not once per pair comparison."""
+        image_ids = {}
+        for walnut_id in (self.w1, self.w2, self.w3):
+            image_ids[walnut_id] = repositories.upsert_walnut_image(
+                walnut_id,
+                1,
+                f"{walnut_id}-1.jpg",
+                f"{walnut_id}/1.jpg",
+            )
+            repositories.upsert_walnut_image_feature(
+                image_id=image_ids[walnut_id],
+                feature_version=OPENCV_FEATURE_VERSION,
+                color_histogram="[1,0]",
+                texture_vector="[1,0]",
+                shape_vector="[1,0]",
+            )
+
+        with patch(
+            "pairnut.services.image_features.deserialize_vector",
+            wraps=deserialize_vector,
+        ) as deserialize_vector_spy:
+            get_candidates_for_variety(self.variety_id)
+
+        # 3 walnuts x 3 vectors = 9 parses regardless of pair count.
+        self.assertEqual(deserialize_vector_spy.call_count, 9)
 
     def test_candidates_for_variety_reuse_the_walnut_snapshot(self) -> None:
         with patch.object(

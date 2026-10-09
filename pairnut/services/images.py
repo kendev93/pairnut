@@ -101,7 +101,7 @@ def import_walnut_images(
             / f"{parsed.face_no}{source.suffix.lower()}"
         )
         target = images_root / relative_path
-        existing_images = images_by_walnut.get(walnut_id, [])
+        existing_images = images_by_walnut.setdefault(walnut_id, [])
         existing_image = next(
             (
                 image

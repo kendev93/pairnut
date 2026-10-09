@@ -111,6 +111,30 @@ def deserialize_vector(value: str) -> list[float]:
     return vector
 
 
+def _as_vector(value: str | Sequence[float]) -> Sequence[float]:
+    """Accept either a stored JSON string or an already parsed vector."""
+    if isinstance(value, (list, tuple)):
+        return value
+    return deserialize_vector(value)
+
+
+def parse_image_feature_row(feature: dict) -> dict | None:
+    """Return the row with its vectors parsed once, or None when it is unusable.
+
+    A matching pass compares every pair, so parsing per pair means quadratic
+    JSON decoding for the same rows. Callers parse once per snapshot instead.
+    """
+    try:
+        return {
+            **feature,
+            "color_histogram": deserialize_vector(feature["color_histogram"]),
+            "texture_vector": deserialize_vector(feature["texture_vector"]),
+            "shape_vector": deserialize_vector(feature["shape_vector"]),
+        }
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def store_opencv_features(image_id: int, image_path: Path) -> None:
     features = extract_opencv_features(image_path)
     repositories.upsert_walnut_image_feature(
@@ -141,17 +165,18 @@ def shape_similarity(left: Sequence[float], right: Sequence[float]) -> float:
 
 
 def feature_similarity(left: dict, right: dict) -> float:
+    """Score two feature rows. Values may be raw JSON strings or parsed vectors."""
     color_score = cosine_similarity(
-        deserialize_vector(left["color_histogram"]),
-        deserialize_vector(right["color_histogram"]),
+        _as_vector(left["color_histogram"]),
+        _as_vector(right["color_histogram"]),
     )
     texture_score = cosine_similarity(
-        deserialize_vector(left["texture_vector"]),
-        deserialize_vector(right["texture_vector"]),
+        _as_vector(left["texture_vector"]),
+        _as_vector(right["texture_vector"]),
     )
     current_shape_similarity = shape_similarity(
-        deserialize_vector(left["shape_vector"]),
-        deserialize_vector(right["shape_vector"]),
+        _as_vector(left["shape_vector"]),
+        _as_vector(right["shape_vector"]),
     )
     return (
         (color_score * 0.4) + (texture_score * 0.4) + (current_shape_similarity * 0.2)

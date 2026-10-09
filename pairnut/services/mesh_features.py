@@ -7,7 +7,7 @@ import math
 import re
 import shutil
 import struct
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,8 +54,26 @@ def _serialize_vector(values: Iterable[float]) -> str:
     )
 
 
-def _deserialize_vector(value: str) -> list[float]:
+def _deserialize_vector(value: str | Sequence[float]) -> Sequence[float]:
+    if isinstance(value, (list, tuple)):
+        return value
     return [float(item) for item in json.loads(value)]
+
+
+def parse_mesh_feature_row(feature: dict) -> dict | None:
+    """Return the row with its vectors parsed once, or None when it is unusable.
+
+    A matching pass compares every pair, so parsing per pair means quadratic
+    JSON decoding for the same rows. Callers parse once per snapshot instead.
+    """
+    try:
+        return {
+            **feature,
+            "dimensions_vector": _deserialize_vector(feature["dimensions_vector"]),
+            "shape_vector": _deserialize_vector(feature["shape_vector"]),
+        }
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def _triangulate(indices: list[int]) -> list[tuple[int, int, int]]:

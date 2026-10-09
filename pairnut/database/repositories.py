@@ -223,7 +223,7 @@ def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
 
 def delete_walnut(walnut_id: int) -> None:
     if get_active_lock_for_walnut(walnut_id):
-        raise ValueError("Cannot delete a locked walnut.")
+        raise ValueError("已锁定的核桃不能删除，请先解除锁定。")
     with db_connection() as conn:
         conn.execute("DELETE FROM walnuts WHERE id = ?", (walnut_id,))
 
@@ -737,7 +737,7 @@ def lock_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int) -> int:
             (left, right, left, right),
         ).fetchone()
         if active_lock:
-            raise ValueError("One of the walnuts is already locked.")
+            raise ValueError("其中一颗核桃已经被锁定，请先解除锁定。")
         cursor.execute(
             """
             INSERT INTO locked_pairs (
@@ -825,7 +825,7 @@ def _validate_pair_variety(
         (walnut_id_1, walnut_id_2),
     ).fetchall()
     if len(rows) != 2 or any(row["variety_id"] != variety_id for row in rows):
-        raise ValueError("Both walnuts must exist in the selected variety.")
+        raise ValueError("两颗核桃必须都存在，且属于当前选中的品种。")
 
 
 def list_blacklist_pairs(variety_id: int | None = None) -> list[dict[str, Any]]:

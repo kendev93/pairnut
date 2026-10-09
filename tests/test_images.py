@@ -94,6 +94,35 @@ class ImageImportTests(unittest.TestCase):
             [row["face_no"] for row in images_by_walnut[self.walnut_id]], [1]
         )
 
+    def test_import_walnut_images_tracks_every_new_face_in_one_batch(self) -> None:
+        first = Path(self.tempdir.name) / "NJS-01-1.JPG"
+        second = Path(self.tempdir.name) / "NJS-01-2.JPG"
+        first.write_text("first", encoding="utf-8")
+        second.write_text("second", encoding="utf-8")
+
+        with self._feature_patches():
+            result = import_walnut_images([first, second], self.variety_id)
+
+        self.assertEqual(result.imported_count, 2)
+        self.assertEqual(result.replaced_count, 0)
+        images = repositories.list_walnut_images(self.walnut_id)
+        self.assertEqual([image["face_no"] for image in images], [1, 2])
+
+    def test_repeated_face_in_one_batch_counts_as_replacement(self) -> None:
+        first = Path(self.tempdir.name) / "NJS-01-3.JPG"
+        second = Path(self.tempdir.name) / "NJS-01-3.PNG"
+        first.write_text("first", encoding="utf-8")
+        second.write_text("second", encoding="utf-8")
+
+        with self._feature_patches():
+            result = import_walnut_images([first, second], self.variety_id)
+
+        self.assertEqual(result.imported_count, 1)
+        self.assertEqual(result.replaced_count, 1)
+        images = repositories.list_walnut_images(self.walnut_id)
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]["stored_path"], f"{self.walnut_id}-NJS-01/3.png")
+
     def test_import_walnut_images_replaces_existing_face(self) -> None:
         first = Path(self.tempdir.name) / "NJS-01-2.JPG"
         second = Path(self.tempdir.name) / "NJS-01-2.PNG"
