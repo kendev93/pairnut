@@ -37,12 +37,3 @@ class CandidateMatch:
     image_candidate_faces: int = 0
     mesh_similarity: float | None = None
     is_strict_match: bool = True
-
-
-@dataclass(frozen=True, slots=True)
-class PairMatch:
-    """A deterministic, non-overlapping automatic pair recommendation."""
-
-    walnut_id_1: int
-    walnut_id_2: int
-    candidate: CandidateMatch

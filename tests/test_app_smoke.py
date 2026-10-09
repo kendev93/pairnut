@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QLabel
 
 from pairnut.app import build_application, run
 from pairnut.database import repositories
+from pairnut.services.pairing import PairingBoard
 from pairnut.ui.views import PairNutMainWindow
 
 
@@ -63,14 +64,18 @@ class AppSmokeTests(unittest.TestCase):
             lock = repositories.list_locked_pairs(
                 variety_id=variety_id, active_only=True
             )[0]
+            walnut = repositories.get_walnut(walnut_id)
+            assert walnut is not None
+            board = PairingBoard(
+                walnuts=[],
+                candidates_by_walnut={},
+                images_by_walnut={},
+                locks_by_walnut={walnut_id: lock},
+                walnuts_by_id={},
+            )
 
             group = window.matching_tab._create_walnut_group(
-                variety_id,
-                repositories.get_walnut(walnut_id),
-                [],
-                {},
-                {walnut_id: lock},
-                {},
+                variety_id, walnut, [], board
             )
 
             labels = [label.text() for label in group.findChildren(QLabel)]

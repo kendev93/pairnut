@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from .connection import db_connection
 
 CURRENT_SCHEMA_VERSION = 1
+ACTIVE_LOCK_INDEX_NAME = "idx_locked_pairs_active_pair"
+_LOGGER = logging.getLogger(__name__)
 
 
 SCHEMA_STATEMENTS = [
@@ -122,17 +126,90 @@ SCHEMA_STATEMENTS = [
 ]
 
 
+def _has_active_pair_unique_index(cursor) -> bool:
+    """True when a partial unique index already enforces one active lock per pair."""
+    for row in cursor.execute("PRAGMA index_list('locked_pairs')").fetchall():
+        if not (row["unique"] and row["partial"]):
+            continue
+        columns = {
+            column["name"]
+            for column in cursor.execute(f"PRAGMA index_info('{row['name']}')")
+        }
+        if columns == {"walnut_id_1", "walnut_id_2"}:
+            return True
+    return False
+
+
+def _drop_stale_active_pair_index(cursor) -> int:
+    """Drop the index name when it holds an outdated definition.
+
+    Databases created before the partial index existed may still carry a unique
+    index on ``(walnut_id_1, walnut_id_2, is_active)``, which blocks repeated
+    lock/unlock cycles of the same pair.
+    """
+    row = cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?",
+        (ACTIVE_LOCK_INDEX_NAME,),
+    ).fetchone()
+    if row is None:
+        return 0
+    cursor.execute(f"DROP INDEX {ACTIVE_LOCK_INDEX_NAME}")
+    return 1
+
+
+def _deactivate_duplicate_active_pairs(cursor) -> int:
+    """Deactivate duplicated active rows, keeping the earliest lock of each pair."""
+    duplicates = cursor.execute(
+        """
+        SELECT walnut_id_1, walnut_id_2, MIN(id) AS keep_id
+        FROM locked_pairs
+        WHERE is_active = 1
+        GROUP BY walnut_id_1, walnut_id_2
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    deactivated = 0
+    for duplicate in duplicates:
+        cursor.execute(
+            """
+            UPDATE locked_pairs
+            SET is_active = 0
+            WHERE walnut_id_1 = ?
+              AND walnut_id_2 = ?
+              AND is_active = 1
+              AND id <> ?
+            """,
+            (
+                duplicate["walnut_id_1"],
+                duplicate["walnut_id_2"],
+                duplicate["keep_id"],
+            ),
+        )
+        deactivated += cursor.rowcount
+    return deactivated
+
+
 def _ensure_locked_pairs_active_unique_index(conn) -> None:
     """Ensure at most one active lock per walnut pair; allow multiple inactive history rows.
 
-    The previous index included ``is_active`` in the key, which forbade more than one
-    unlocked history row for the same pair (lock → unlock → lock → unlock failed).
+    The previous index included ``is_active`` in the key, which forbade more than
+    one unlocked history row for the same pair (lock → unlock → lock → unlock
+    failed). The guard is created only when missing, so repeated application
+    starts no longer rebuild it.
     """
     cursor = conn.cursor()
-    cursor.execute("DROP INDEX IF EXISTS idx_locked_pairs_active_pair")
+    if _has_active_pair_unique_index(cursor):
+        return
+
+    _drop_stale_active_pair_index(cursor)
+    deactivated = _deactivate_duplicate_active_pairs(cursor)
+    if deactivated:
+        _LOGGER.warning(
+            "已修复 %s 条重复的锁定记录，同一配对保留最早锁定的一条。", deactivated
+        )
     cursor.execute(
-        """
-        CREATE UNIQUE INDEX idx_locked_pairs_active_pair
+        f"""
+        CREATE UNIQUE INDEX {ACTIVE_LOCK_INDEX_NAME}
         ON locked_pairs (walnut_id_1, walnut_id_2)
         WHERE is_active = 1
         """

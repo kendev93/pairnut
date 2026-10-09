@@ -47,7 +47,6 @@ from ..database import get_data_dir, get_images_dir, get_models_dir, repositorie
 from ..domain.models import DefectLevel, SerialMode
 from ..services.data_cleanup import delete_variety_data, delete_walnut_data
 from ..services.images import delete_walnut_image, import_walnut_images
-from ..services.matching import get_matching_view_data, lock_candidate_pair
 from ..services.mesh_features import import_walnut_mesh
 from ..services.model_registry import (
     can_download_model,
@@ -58,7 +57,16 @@ from ..services.model_registry import (
     list_feature_models,
     set_active_model,
 )
-from ..services.scoring import MIN_RECOMMENDATION_SCORE, recommendation_label
+from ..services.pairing import (
+    PairingBoard,
+    blacklist_pair,
+    list_blacklist_entries,
+    load_pairing_board,
+    lock_pair,
+    remove_blacklist_entry,
+    unlock_pair,
+)
+from ..services.scoring import recommendation_label
 from ..services.serials import next_serial_no
 from ..services.updates import UpdateInfo, check_for_update
 
@@ -1504,32 +1512,19 @@ class MatchingTab(VarietyScopedWidget):
             self.scroll_layout.addWidget(QLabel("请先创建并选中一个品种。"))
             return
 
-        walnuts, candidates_by_walnut = get_matching_view_data(
-            variety_id,
-            minimum_score=MIN_RECOMMENDATION_SCORE,
-        )
-        if not walnuts:
+        board = load_pairing_board(variety_id)
+        if not board.walnuts:
             self.scroll_layout.addWidget(QLabel("当前品种还没有核桃。"))
             return
 
-        images_by_walnut = repositories.list_walnut_images_for_variety(variety_id)
-        walnuts_by_id = {int(walnut["id"]): walnut for walnut in walnuts}
-        locks_by_walnut: dict[int, dict] = {}
-        for lock in repositories.list_locked_pairs(
-            variety_id=variety_id, active_only=True
-        ):
-            locks_by_walnut[int(lock["walnut_id_1"])] = lock
-            locks_by_walnut[int(lock["walnut_id_2"])] = lock
-
-        for walnut in walnuts:
+        for walnut in board.walnuts:
+            walnut_id = int(walnut["id"])
             self.scroll_layout.addWidget(
                 self._create_walnut_group(
                     variety_id,
                     walnut,
-                    candidates_by_walnut.get(walnut["id"], []),
-                    images_by_walnut,
-                    locks_by_walnut,
-                    walnuts_by_id,
+                    board.candidates_by_walnut.get(walnut_id, []),
+                    board,
                 )
             )
 
@@ -1538,9 +1533,7 @@ class MatchingTab(VarietyScopedWidget):
         variety_id: int,
         walnut: dict,
         candidates: list,
-        images_by_walnut: dict[int, list[dict]],
-        locks_by_walnut: dict[int, dict],
-        walnuts_by_id: dict[int, dict],
+        board: PairingBoard,
     ) -> QGroupBox:
         title = (
             f"{walnut['serial_no']}   ·   "
@@ -1565,18 +1558,18 @@ class MatchingTab(VarietyScopedWidget):
         walnut_id = int(walnut["id"])
         layout.addWidget(
             create_walnut_image_strip(
-                walnut_id, 58, images_by_walnut.get(walnut_id, [])
+                walnut_id, 58, board.images_by_walnut.get(walnut_id, [])
             )
         )
 
-        active_lock = locks_by_walnut.get(walnut_id)
+        active_lock = board.locks_by_walnut.get(walnut_id)
         if active_lock:
             partner_id = (
                 active_lock["walnut_id_2"]
                 if active_lock["walnut_id_1"] == walnut_id
                 else active_lock["walnut_id_1"]
             )
-            partner = walnuts_by_id.get(int(partner_id))
+            partner = board.walnuts_by_id.get(int(partner_id))
             partner_label = (
                 partner["serial_no"] if partner is not None else f"核桃 {partner_id}"
             )
@@ -1597,7 +1590,7 @@ class MatchingTab(VarietyScopedWidget):
                     create_walnut_image_strip(
                         int(partner["id"]),
                         58,
-                        images_by_walnut.get(int(partner["id"]), []),
+                        board.images_by_walnut.get(int(partner["id"]), []),
                     )
                 )
             layout.addWidget(lock_card)
@@ -1617,7 +1610,7 @@ class MatchingTab(VarietyScopedWidget):
                     variety_id,
                     walnut_id,
                     candidate,
-                    images_by_walnut.get(candidate.walnut_id, []),
+                    board.images_by_walnut.get(candidate.walnut_id, []),
                 )
             )
         return group
@@ -1721,7 +1714,7 @@ class MatchingTab(VarietyScopedWidget):
 
     def _lock_pair(self, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
         try:
-            lock_candidate_pair(variety_id, walnut_id_1, walnut_id_2)
+            lock_pair(variety_id, walnut_id_1, walnut_id_2)
             self.window.show_message("配对已锁定")
             self.window.refresh_active()
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
@@ -1729,7 +1722,7 @@ class MatchingTab(VarietyScopedWidget):
 
     def _unlock_pair(self, pair_id: int) -> None:
         try:
-            repositories.unlock_pair(pair_id)
+            unlock_pair(pair_id)
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             self.window.show_error(f"解除锁定失败: {exc}")
             return
@@ -1743,9 +1736,7 @@ class MatchingTab(VarietyScopedWidget):
         if not accepted:
             return
         try:
-            repositories.create_blacklist_pair(
-                variety_id, walnut_id_1, walnut_id_2, reason=reason
-            )
+            blacklist_pair(variety_id, walnut_id_1, walnut_id_2, reason=reason)
             self.window.show_message("已加入拉黑列表")
             self.window.refresh_active()
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
@@ -1756,28 +1747,23 @@ class MatchingTab(VarietyScopedWidget):
         if not variety_id:
             self.window.show_error("请先创建并选中一个品种。")
             return
-        blacklist = repositories.list_blacklist_pairs(variety_id=variety_id)
-        if not blacklist:
+        entries = list_blacklist_entries(variety_id)
+        if not entries:
             QMessageBox.information(self, "拉黑管理", "当前品种没有拉黑配对。")
             return
-        labels = [
-            f"{item['serial_no_1']} ↔ {item['serial_no_2']}"
-            + (f"（{item['reason']}）" if item["reason"] else "")
-            for item in blacklist
-        ]
+        labels = [entry.label for entry in entries]
         selected, accepted = QInputDialog.getItem(
             self, "拉黑管理", "选择要移除的配对：", labels, 0, False
         )
         if not accepted:
             return
-        selected_index = labels.index(selected)
-        selected_item = blacklist[selected_index]
+        selected_entry = entries[labels.index(selected)]
         if (
             QMessageBox.question(self, "移除拉黑", f"确认移除“{selected}”？")
             != QMessageBox.Yes
         ):
             return
-        if repositories.delete_blacklist_pair(int(selected_item["id"])):
+        if remove_blacklist_entry(selected_entry.id):
             self.window.show_message("已移除拉黑配对")
             self.window.refresh_active()
 

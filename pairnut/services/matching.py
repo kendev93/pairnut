@@ -1,15 +1,12 @@
-"""Candidate matching and non-overlapping pairing services."""
+"""Candidate matching services."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from functools import cache
-
-import networkx as nx  # type: ignore[import-untyped]
 
 from ..database import repositories
-from ..domain.models import CandidateMatch, PairMatch
+from ..domain.models import CandidateMatch
 from .image_features import (
     OPENCV_FEATURE_VERSION,
     WalnutImageSimilarity,
@@ -397,113 +394,4 @@ def lock_candidate_pair(
     return repositories.lock_pair(variety_id, walnut_id_1, walnut_id_2)
 
 
-def _select_non_overlapping_pairs(possible_pairs: list[PairMatch]) -> list[PairMatch]:
-    """Select a deterministic maximum-score matching for small candidate graphs.
 
-    Exact bitmask dynamic programming is practical for the usual small pairing
-    batch. Larger batches use the deterministic greedy fallback to avoid an
-    exponential memory/time spike.
-    """
-    if not possible_pairs:
-        return []
-
-    ordered_pairs = sorted(
-        possible_pairs,
-        key=lambda pair: (
-            -pair.candidate.total_score,
-            pair.candidate.weight_diff,
-            pair.walnut_id_1,
-            pair.walnut_id_2,
-        ),
-    )
-    unique_pairs: dict[tuple[int, int], PairMatch] = {}
-    for pair in ordered_pairs:
-        key = _pair_key(pair.walnut_id_1, pair.walnut_id_2)
-        unique_pairs.setdefault(key, pair)
-
-    walnut_ids = sorted({walnut_id for pair in unique_pairs for walnut_id in pair})
-    if len(walnut_ids) > 20:
-        graph = nx.Graph()
-        graph.add_nodes_from(walnut_ids)
-        for index, key in enumerate(sorted(unique_pairs)):
-            pair = unique_pairs[key]
-            # The tiny deterministic tie-breaker never changes a meaningful score.
-            tie_breaker = (len(unique_pairs) - index) * 1e-10
-            graph.add_edge(
-                key[0], key[1], weight=pair.candidate.total_score + tie_breaker
-            )
-        large_selected_keys = sorted(
-            _pair_key(int(left), int(right))
-            for left, right in nx.max_weight_matching(
-                graph, maxcardinality=False, weight="weight"
-            )
-        )
-        return [unique_pairs[key] for key in large_selected_keys]
-
-    def better(
-        left: tuple[float, tuple[tuple[int, int], ...]],
-        right: tuple[float, tuple[tuple[int, int], ...]],
-    ) -> bool:
-        if left[0] > right[0] + 1e-9:
-            return True
-        if abs(left[0] - right[0]) <= 1e-9:
-            return left[1] < right[1]
-        return False
-
-    @cache
-    def solve(mask: int) -> tuple[float, tuple[tuple[int, int], ...]]:
-        if mask == 0:
-            return 0.0, ()
-        lowest_bit = mask & -mask
-        left_index = lowest_bit.bit_length() - 1
-        left_id = walnut_ids[left_index]
-        best = solve(mask ^ lowest_bit)
-        remaining_mask = mask ^ lowest_bit
-        while remaining_mask:
-            right_bit = remaining_mask & -remaining_mask
-            right_index = right_bit.bit_length() - 1
-            right_id = walnut_ids[right_index]
-            pair = unique_pairs.get((left_id, right_id))
-            if pair is not None:
-                rest_score, rest_pairs = solve(mask ^ lowest_bit ^ right_bit)
-                pair_key = (left_id, right_id)
-                candidate = (
-                    rest_score + pair.candidate.total_score,
-                    tuple(sorted((*rest_pairs, pair_key))),
-                )
-                if better(candidate, best):
-                    best = candidate
-            remaining_mask ^= right_bit
-        return best
-
-    _, exact_selected_keys = solve((1 << len(walnut_ids)) - 1)
-    return [unique_pairs[key] for key in exact_selected_keys]
-
-
-def get_non_overlapping_pairs(
-    variety_id: int,
-    minimum_score: float = MIN_RECOMMENDATION_SCORE,
-    screening_multiplier: float = DEFAULT_SCREENING_TOLERANCE_MULTIPLIER,
-) -> list[PairMatch]:
-    """Return deterministic, highest-score-first pairs without reused walnuts.
-
-    The existing candidate board intentionally shows repeated candidates. This
-    separate helper is for workflows that need a one-to-one recommendation.
-    """
-    normalized_minimum_score = _validate_minimum_score(minimum_score)
-    assert normalized_minimum_score is not None
-    candidates_by_walnut = get_candidates_for_variety(
-        variety_id,
-        limit=None,
-        screening_multiplier=screening_multiplier,
-        minimum_score=normalized_minimum_score,
-    )
-    possible_pairs: list[PairMatch] = []
-    for base_id, candidates in candidates_by_walnut.items():
-        for candidate in candidates:
-            left, right = _pair_key(base_id, candidate.walnut_id)
-            if base_id != left or candidate.total_score < normalized_minimum_score:
-                continue
-            possible_pairs.append(PairMatch(left, right, candidate))
-
-    return _select_non_overlapping_pairs(possible_pairs)

@@ -8,15 +8,12 @@ from unittest.mock import patch
 from pairnut.database import repositories
 from pairnut.database.connection import db_connection
 from pairnut.database.schema import init_database
-from pairnut.domain.models import CandidateMatch, PairMatch
 from pairnut.services.image_features import OPENCV_FEATURE_VERSION, deserialize_vector
 from pairnut.services.matching import (
     _combine_optional_evidence,
-    _select_non_overlapping_pairs,
     get_candidates_for_variety,
     get_candidates_for_walnut,
     get_matching_view_data,
-    get_non_overlapping_pairs,
     lock_candidate_pair,
 )
 from pairnut.services.mesh_features import MESH_FEATURE_VERSION
@@ -379,85 +376,4 @@ class MatchingTests(unittest.TestCase):
 
         self.assertEqual(list_walnuts.call_count, 1)
 
-    def test_non_overlapping_pairs_use_each_walnut_at_most_once(self) -> None:
-        result = get_non_overlapping_pairs(self.variety_id)
 
-        used_ids = [
-            walnut_id
-            for pair in result
-            for walnut_id in (pair.walnut_id_1, pair.walnut_id_2)
-        ]
-
-        self.assertEqual(len(used_ids), len(set(used_ids)))
-        self.assertEqual(len(result), 2)
-
-    def test_non_overlapping_selection_maximizes_total_score(self) -> None:
-        def pair(left: int, right: int, score: float) -> PairMatch:
-            return PairMatch(
-                left,
-                right,
-                CandidateMatch(
-                    walnut_id=right,
-                    serial_no=f"N-{right}",
-                    total_score=score,
-                    dimension_score=score,
-                    weight_bonus=0.0,
-                    defect_penalty=0.0,
-                    edge_diff=0.0,
-                    belly_diff=0.0,
-                    height_diff=0.0,
-                    weight_diff=0.0,
-                    defect_level="none",
-                ),
-            )
-
-        result = _select_non_overlapping_pairs(
-            [
-                pair(1, 2, 100.0),
-                pair(1, 3, 95.0),
-                pair(2, 4, 94.0),
-                pair(3, 4, 1.0),
-            ]
-        )
-
-        self.assertEqual(
-            {(item.walnut_id_1, item.walnut_id_2) for item in result}, {(1, 3), (2, 4)}
-        )
-
-    def test_large_non_overlapping_selection_does_not_use_greedy_local_optimum(
-        self,
-    ) -> None:
-        def pair(left: int, right: int, score: float) -> PairMatch:
-            return PairMatch(
-                left,
-                right,
-                CandidateMatch(
-                    walnut_id=right,
-                    serial_no=f"N-{right}",
-                    total_score=score,
-                    dimension_score=score,
-                    weight_bonus=0.0,
-                    defect_penalty=0.0,
-                    edge_diff=0.0,
-                    belly_diff=0.0,
-                    height_diff=0.0,
-                    weight_diff=0.0,
-                    defect_level="none",
-                ),
-            )
-
-        possible = [
-            pair(1, 2, 100.0),
-            pair(1, 3, 99.0),
-            pair(2, 4, 98.0),
-            pair(3, 4, 1.0),
-        ]
-        possible.extend(pair(index, index + 1, 10.0) for index in range(10, 28, 2))
-
-        result = _select_non_overlapping_pairs(possible)
-
-        selected = {(item.walnut_id_1, item.walnut_id_2) for item in result}
-        self.assertIn((1, 3), selected)
-        self.assertIn((2, 4), selected)
-        self.assertNotIn((1, 2), selected)
-        self.assertNotIn((3, 4), selected)

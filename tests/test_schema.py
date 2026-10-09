@@ -16,7 +16,11 @@ from pairnut.database.connection import (
     get_meshes_dir,
     get_models_dir,
 )
-from pairnut.database.schema import init_database
+from pairnut.database.schema import (
+    ACTIVE_LOCK_INDEX_NAME,
+    _has_active_pair_unique_index,
+    init_database,
+)
 
 
 class SchemaTests(unittest.TestCase):
@@ -93,6 +97,107 @@ class SchemaTests(unittest.TestCase):
     def test_meshes_dir_lives_under_data_dir(self) -> None:
         self.assertEqual(get_meshes_dir(), Path(self.tempdir.name) / "meshes")
         self.assertTrue(get_meshes_dir().exists())
+
+    def _seed_two_walnuts(self) -> tuple[int, int, int]:
+        variety_id = repositories.create_variety("狮子头", "SZT", 1.0)
+        walnut_ids = [
+            repositories.create_walnut(
+                {
+                    "variety_id": variety_id,
+                    "serial_mode": "manual",
+                    "serial_no": serial_no,
+                    "edge_mm": 40.0,
+                    "belly_mm": 42.0,
+                    "height_mm": 38.0,
+                    "weight_g": 52.0,
+                    "defect_level": "none",
+                    "notes": None,
+                }
+            )
+            for serial_no in ("SZT-0001", "SZT-0002")
+        ]
+        return variety_id, walnut_ids[0], walnut_ids[1]
+
+    def _insert_active_lock(self, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
+        with db_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO locked_pairs (
+                    variety_id, walnut_id_1, walnut_id_2, locked_at, is_active
+                )
+                VALUES (?, ?, ?, '2026-01-01T00:00:00', 1)
+                """,
+                (variety_id, min(walnut_id_1, walnut_id_2), max(walnut_id_1, walnut_id_2)),
+            )
+
+    def test_duplicate_active_locks_are_repaired_on_startup(self) -> None:
+        variety_id, first_id, second_id = self._seed_two_walnuts()
+        kept_lock_id = repositories.lock_pair(variety_id, first_id, second_id)
+        with db_connection() as conn:
+            conn.execute(f"DROP INDEX {ACTIVE_LOCK_INDEX_NAME}")
+        self._insert_active_lock(variety_id, first_id, second_id)
+
+        init_database()
+
+        with db_connection() as conn:
+            active_ids = [
+                row["id"]
+                for row in conn.execute(
+                    """
+                    SELECT id FROM locked_pairs
+                    WHERE walnut_id_1 = ? AND walnut_id_2 = ? AND is_active = 1
+                    ORDER BY id
+                    """,
+                    (min(first_id, second_id), max(first_id, second_id)),
+                )
+            ]
+
+        self.assertEqual(active_ids, [kept_lock_id])
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert_active_lock(variety_id, first_id, second_id)
+
+    def test_stale_unique_index_is_replaced_on_startup(self) -> None:
+        variety_id, first_id, second_id = self._seed_two_walnuts()
+        with db_connection() as conn:
+            conn.execute(f"DROP INDEX {ACTIVE_LOCK_INDEX_NAME}")
+            conn.execute(
+                f"""
+                CREATE UNIQUE INDEX {ACTIVE_LOCK_INDEX_NAME}
+                ON locked_pairs (walnut_id_1, walnut_id_2, is_active)
+                """
+            )
+
+        init_database()
+
+        first_lock_id = repositories.lock_pair(variety_id, first_id, second_id)
+        repositories.unlock_pair(first_lock_id)
+        second_lock_id = repositories.lock_pair(variety_id, first_id, second_id)
+        repositories.unlock_pair(second_lock_id)
+
+    def test_repeated_startup_keeps_the_unique_guard(self) -> None:
+        init_database()
+
+        with db_connection() as conn:
+            self.assertTrue(_has_active_pair_unique_index(conn.cursor()))
+
+        init_database()
+
+        with db_connection() as conn:
+            self.assertTrue(_has_active_pair_unique_index(conn.cursor()))
+
+    def test_unique_index_lookup_ignores_incomplete_definitions(self) -> None:
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"DROP INDEX {ACTIVE_LOCK_INDEX_NAME}")
+            self.assertFalse(_has_active_pair_unique_index(cursor))
+
+            cursor.execute(
+                f"""
+                CREATE UNIQUE INDEX {ACTIVE_LOCK_INDEX_NAME}
+                ON locked_pairs (walnut_id_1, walnut_id_2, is_active)
+                """
+            )
+            self.assertFalse(_has_active_pair_unique_index(cursor))
 
     def test_variety_unique_constraints(self) -> None:
         repositories.create_variety("狮子头", "SZT", 1.0)
