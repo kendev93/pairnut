@@ -18,6 +18,7 @@ from pairnut.database.connection import (
 )
 from pairnut.database.schema import (
     ACTIVE_LOCK_INDEX_NAME,
+    CURRENT_SCHEMA_VERSION,
     _has_active_pair_unique_index,
     init_database,
 )
@@ -40,7 +41,7 @@ class SchemaTests(unittest.TestCase):
         with db_connection() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
 
-        self.assertEqual(version, 1)
+        self.assertEqual(version, CURRENT_SCHEMA_VERSION)
 
     def test_development_data_dir_uses_project_data_directory(self) -> None:
         os.environ.pop("PAIRNUT_DATA_DIR", None)

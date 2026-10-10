@@ -47,6 +47,11 @@ from ..database import get_data_dir, get_images_dir, get_models_dir, repositorie
 from ..domain.models import DefectLevel, SerialMode
 from ..services.data_cleanup import delete_variety_data, delete_walnut_data
 from ..services.images import delete_walnut_image, import_walnut_images
+from ..services.inventory import (
+    find_variety_id,
+    load_dashboard_counts,
+    load_walnut_rows,
+)
 from ..services.mesh_features import import_walnut_mesh
 from ..services.model_registry import (
     can_download_model,
@@ -1063,13 +1068,7 @@ class VarietyTab(QWidget):
         prefix_item = self.table.item(row, 1)
         if name_item is None or prefix_item is None:
             return None
-        for variety in repositories.list_varieties():
-            if (
-                variety["name"] == name_item.text()
-                and variety["code_prefix"] == prefix_item.text()
-            ):
-                return int(variety["id"])
-        return None
+        return find_variety_id(name_item.text(), prefix_item.text())
 
     def _restore_selected_variety(self) -> None:
         current_id = self.window.selected_variety_id
@@ -1257,27 +1256,10 @@ class WalnutTab(VarietyScopedWidget):
 
     def refresh(self) -> None:
         self.refresh_variety_combo()
-        variety_id = self.window.selected_variety_id
-        walnuts = (
-            repositories.list_walnuts(variety_id=variety_id, include_locked=True)
-            if variety_id
-            else []
-        )
-        images_by_walnut = (
-            repositories.list_walnut_images_for_variety(variety_id)
-            if variety_id
-            else {}
-        )
-        meshes_by_walnut = (
-            repositories.list_walnut_meshes_for_variety(variety_id)
-            if variety_id
-            else {}
-        )
-        self.table.setRowCount(len(walnuts))
-        for row, walnut in enumerate(walnuts):
-            walnut_id = int(walnut["id"])
-            images = images_by_walnut.get(walnut_id, [])
-            mesh = meshes_by_walnut.get(walnut_id)
+        rows = load_walnut_rows(self.window.selected_variety_id)
+        self.table.setRowCount(len(rows))
+        for index, row_data in enumerate(rows):
+            walnut = row_data.walnut
             values = [
                 walnut["serial_no"],
                 f"{walnut['edge_mm']:.2f}",
@@ -1285,18 +1267,18 @@ class WalnutTab(VarietyScopedWidget):
                 f"{walnut['height_mm']:.2f}",
                 f"{walnut['weight_g']:.2f}",
                 walnut["defect_level"],
-                f"{len(images)} / 6",
-                "已导入" if mesh else "未导入",
-                "已锁定" if walnut["is_locked"] else "未锁定",
+                row_data.image_count_label,
+                row_data.mesh_label,
+                row_data.lock_label,
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignCenter)
                 if column == 0:
                     item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-                self.table.setItem(row, column, item)
+                self.table.setItem(index, column, item)
             self.table.setCellWidget(
-                row, 6, create_walnut_image_strip(walnut_id, 42, images)
+                index, 6, create_walnut_image_strip(row_data.id, 42, row_data.images)
             )
         self.table.resizeRowsToContents()
         for row in range(self.table.rowCount()):
@@ -1963,11 +1945,12 @@ class PairNutMainWindow(QMainWindow):
             selected_variety["name"] if selected_variety else "未选中品种"
         )
 
-        walnuts = repositories.list_walnuts(include_locked=True)
-        locked_pairs = repositories.list_locked_pairs(active_only=True)
-        self._update_metric_widget(self.variety_count_label, str(len(varieties)))
-        self._update_metric_widget(self.walnut_count_label, str(len(walnuts)))
-        self._update_metric_widget(self.locked_count_label, str(len(locked_pairs)))
+        counts = load_dashboard_counts()
+        self._update_metric_widget(self.variety_count_label, str(counts.varieties))
+        self._update_metric_widget(self.walnut_count_label, str(counts.walnuts))
+        self._update_metric_widget(
+            self.locked_count_label, str(counts.locked_pairs)
+        )
 
     def _refresh_current_tab(self, index: int | None = None) -> None:
         if index is None:

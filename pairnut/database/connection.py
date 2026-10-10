@@ -70,12 +70,18 @@ def get_meshes_dir() -> Path:
 
 
 @contextmanager
-def db_connection():
-    """Yield a SQLite connection with row access and FK support."""
+def db_connection(immediate: bool = False):
+    """Yield a SQLite connection with row access and FK support.
+
+    ``immediate`` takes the write lock up front, so read-then-write flows such as
+    "check a lock exists, then write" cannot be interleaved by another writer.
+    """
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
+        if immediate:
+            conn.execute("BEGIN IMMEDIATE")
         yield conn
         conn.commit()
     except Exception:

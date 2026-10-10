@@ -322,30 +322,6 @@ def get_candidates_for_walnut(
     )
 
 
-def get_candidates_for_variety(
-    variety_id: int,
-    limit: int | None = DEFAULT_CANDIDATE_LIMIT,
-    screening_multiplier: float = DEFAULT_SCREENING_TOLERANCE_MULTIPLIER,
-    minimum_score: float | None = None,
-) -> dict[int, list[CandidateMatch]]:
-    normalized_limit = _validate_limit(limit)
-    normalized_multiplier = _validate_screening_multiplier(screening_multiplier)
-    normalized_minimum_score = _validate_minimum_score(minimum_score)
-    snapshot = _load_matching_snapshot(variety_id)
-    evidence_cache: dict[tuple[int, int], _PairEvidence] = {}
-    return {
-        int(walnut["id"]): _get_candidates_from_snapshot(
-            walnut,
-            snapshot,
-            normalized_limit,
-            normalized_minimum_score,
-            normalized_multiplier,
-            evidence_cache,
-        )
-        for walnut in snapshot.walnuts
-    }
-
-
 def get_matching_view_data(
     variety_id: int,
     limit: int | None = DEFAULT_CANDIDATE_LIMIT,

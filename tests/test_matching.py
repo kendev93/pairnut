@@ -11,7 +11,6 @@ from pairnut.database.schema import init_database
 from pairnut.services.image_features import OPENCV_FEATURE_VERSION, deserialize_vector
 from pairnut.services.matching import (
     _combine_optional_evidence,
-    get_candidates_for_variety,
     get_candidates_for_walnut,
     get_matching_view_data,
     lock_candidate_pair,
@@ -138,17 +137,17 @@ class MatchingTests(unittest.TestCase):
         self.assertGreater(partial_coverage, 80.0)
 
     def test_candidates_can_repeat_across_rows(self) -> None:
-        result = get_candidates_for_variety(self.variety_id)
-        candidate_ids_for_w1 = [item.walnut_id for item in result[self.w1]]
-        candidate_ids_for_w4 = [item.walnut_id for item in result[self.w4]]
+        _, candidates = get_matching_view_data(self.variety_id)
+        candidate_ids_for_w1 = [item.walnut_id for item in candidates[self.w1]]
+        candidate_ids_for_w4 = [item.walnut_id for item in candidates[self.w4]]
         self.assertIn(self.w2, candidate_ids_for_w1)
         self.assertIn(self.w2, candidate_ids_for_w4)
 
     def test_locked_walnuts_are_removed_from_future_candidates(self) -> None:
         repositories.lock_pair(self.variety_id, self.w1, self.w2)
-        result = get_candidates_for_variety(self.variety_id)
-        self.assertEqual(result[self.w1], [])
-        for candidate in result[self.w3]:
+        _, candidates = get_matching_view_data(self.variety_id)
+        self.assertEqual(candidates[self.w1], [])
+        for candidate in candidates[self.w3]:
             self.assertNotEqual(candidate.walnut_id, self.w2)
 
     def test_active_lock_table_is_source_of_truth_for_matching(self) -> None:
@@ -159,10 +158,10 @@ class MatchingTests(unittest.TestCase):
                 (self.w1, self.w2),
             )
 
-        result = get_candidates_for_variety(self.variety_id)
+        _, candidates = get_matching_view_data(self.variety_id)
 
-        self.assertEqual(result[self.w1], [])
-        self.assertNotIn(self.w2, [item.walnut_id for item in result[self.w3]])
+        self.assertEqual(candidates[self.w1], [])
+        self.assertNotIn(self.w2, [item.walnut_id for item in candidates[self.w3]])
 
     def test_unlock_after_second_lock_same_pair(self) -> None:
         """Regression: old unique index on (pair, is_active) blocked a second unlock."""
@@ -363,16 +362,16 @@ class MatchingTests(unittest.TestCase):
             "pairnut.services.image_features.deserialize_vector",
             wraps=deserialize_vector,
         ) as deserialize_vector_spy:
-            get_candidates_for_variety(self.variety_id)
+            get_matching_view_data(self.variety_id)
 
         # 3 walnuts x 3 vectors = 9 parses regardless of pair count.
         self.assertEqual(deserialize_vector_spy.call_count, 9)
 
-    def test_candidates_for_variety_reuse_the_walnut_snapshot(self) -> None:
+    def test_view_data_snapshot_is_reused_for_evidence_parsing(self) -> None:
         with patch.object(
             repositories, "list_walnuts", wraps=repositories.list_walnuts
         ) as list_walnuts:
-            get_candidates_for_variety(self.variety_id)
+            get_matching_view_data(self.variety_id)
 
         self.assertEqual(list_walnuts.call_count, 1)
 

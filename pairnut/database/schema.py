@@ -6,9 +6,30 @@ import logging
 
 from .connection import db_connection
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 ACTIVE_LOCK_INDEX_NAME = "idx_locked_pairs_active_pair"
 _LOGGER = logging.getLogger(__name__)
+
+# Forward-only statements keyed by the schema version they produce. Version 1 is
+# the original schema; every later entry must be safe to replay from any earlier
+# version.
+MIGRATIONS: dict[int, tuple[str, ...]] = {
+    2: (
+        # The locks table is the source of truth on every read, but the cached
+        # walnut flag could drift in databases written by earlier versions.
+        """
+        UPDATE walnuts
+        SET is_locked = CASE WHEN EXISTS (
+            SELECT 1 FROM locked_pairs active_lock
+            WHERE active_lock.is_active = 1
+              AND (
+                  active_lock.walnut_id_1 = walnuts.id
+                  OR active_lock.walnut_id_2 = walnuts.id
+              )
+        ) THEN 1 ELSE 0 END
+        """,
+    ),
+}
 
 
 SCHEMA_STATEMENTS = [
@@ -216,8 +237,17 @@ def _ensure_locked_pairs_active_unique_index(conn) -> None:
     )
 
 
+def apply_migrations(cursor, current_version: int) -> None:
+    """Run the migration statements newer than the stored schema version."""
+    for version in sorted(MIGRATIONS):
+        if version <= current_version:
+            continue
+        for statement in MIGRATIONS[version]:
+            cursor.execute(statement)
+
+
 def init_database() -> None:
-    """Create the current schema and record its migration version."""
+    """Create the current schema, keep it healthy and record its version."""
     with db_connection() as conn:
         current_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
         if current_version > CURRENT_SCHEMA_VERSION:
@@ -228,5 +258,6 @@ def init_database() -> None:
         for statement in SCHEMA_STATEMENTS:
             cursor.execute(statement)
         _ensure_locked_pairs_active_unique_index(conn)
+        apply_migrations(cursor, current_version)
         if current_version < CURRENT_SCHEMA_VERSION:
             conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")

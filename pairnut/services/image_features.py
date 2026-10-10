@@ -135,17 +135,6 @@ def parse_image_feature_row(feature: dict) -> dict | None:
         return None
 
 
-def store_opencv_features(image_id: int, image_path: Path) -> None:
-    features = extract_opencv_features(image_path)
-    repositories.upsert_walnut_image_feature(
-        image_id=image_id,
-        feature_version=OPENCV_FEATURE_VERSION,
-        color_histogram=serialize_vector(features.color_histogram),
-        texture_vector=serialize_vector(features.texture_vector),
-        shape_vector=serialize_vector(features.shape_vector),
-    )
-
-
 def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right) or not left:
         return 0.0

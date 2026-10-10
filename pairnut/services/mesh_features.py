@@ -287,11 +287,6 @@ def extract_mesh_features(path: str | Path) -> MeshFeature:
     )
 
 
-def store_mesh_features(mesh_id: int, mesh_path: str | Path) -> int:
-    feature = extract_mesh_features(mesh_path)
-    return store_mesh_feature(mesh_id, feature)
-
-
 def store_mesh_feature(mesh_id: int, feature: MeshFeature) -> int:
     return repositories.upsert_walnut_mesh_feature(
         mesh_id=mesh_id,

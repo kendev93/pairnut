@@ -189,8 +189,9 @@ def create_walnut(data: dict[str, Any]) -> int:
 
 def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
     data = {**data, **validate_walnut_input(data)}
-    with db_connection() as conn:
-        if conn.execute(
+    with db_connection(immediate=True) as conn:
+        cursor = conn.cursor()
+        if cursor.execute(
             """
             SELECT 1 FROM locked_pairs
             WHERE is_active = 1 AND (walnut_id_1 = ? OR walnut_id_2 = ?)
@@ -199,7 +200,7 @@ def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
             (walnut_id, walnut_id),
         ).fetchone():
             raise ValueError("已锁定的核桃不能编辑，请先解除锁定。")
-        conn.execute(
+        cursor.execute(
             """
             UPDATE walnuts
             SET serial_mode = ?, serial_no = ?, edge_mm = ?, belly_mm = ?, height_mm = ?,
@@ -222,10 +223,18 @@ def update_walnut(walnut_id: int, data: dict[str, Any]) -> None:
 
 
 def delete_walnut(walnut_id: int) -> None:
-    if get_active_lock_for_walnut(walnut_id):
-        raise ValueError("已锁定的核桃不能删除，请先解除锁定。")
-    with db_connection() as conn:
-        conn.execute("DELETE FROM walnuts WHERE id = ?", (walnut_id,))
+    with db_connection(immediate=True) as conn:
+        cursor = conn.cursor()
+        if cursor.execute(
+            """
+            SELECT 1 FROM locked_pairs
+            WHERE is_active = 1 AND (walnut_id_1 = ? OR walnut_id_2 = ?)
+            LIMIT 1
+            """,
+            (walnut_id, walnut_id),
+        ).fetchone():
+            raise ValueError("已锁定的核桃不能删除，请先解除锁定。")
+        cursor.execute("DELETE FROM walnuts WHERE id = ?", (walnut_id,))
 
 
 def get_walnut(walnut_id: int) -> dict[str, Any] | None:
@@ -368,8 +377,9 @@ def upsert_walnut_image_with_feature(
 ) -> int:
     """Upsert an image and its feature row in one database transaction."""
     timestamp = now_str()
-    with db_connection() as conn:
+    with db_connection(immediate=True) as conn:
         cursor = conn.cursor()
+        _assert_walnut_unlocked(cursor, walnut_id)
         cursor.execute(
             """
             INSERT INTO walnut_images (walnut_id, face_no, original_filename, stored_path, imported_at)
@@ -506,8 +516,10 @@ def get_walnut_image(walnut_id: int, face_no: int) -> dict[str, Any] | None:
 
 
 def delete_walnut_image(walnut_id: int, face_no: int) -> None:
-    with db_connection() as conn:
-        conn.execute(
+    with db_connection(immediate=True) as conn:
+        cursor = conn.cursor()
+        _assert_walnut_unlocked(cursor, walnut_id)
+        cursor.execute(
             "DELETE FROM walnut_images WHERE walnut_id = ? AND face_no = ?",
             (walnut_id, face_no),
         )
@@ -515,8 +527,9 @@ def delete_walnut_image(walnut_id: int, face_no: int) -> None:
 
 def upsert_walnut_mesh(walnut_id: int, original_filename: str, stored_path: str) -> int:
     timestamp = now_str()
-    with db_connection() as conn:
+    with db_connection(immediate=True) as conn:
         cursor = conn.cursor()
+        _assert_walnut_unlocked(cursor, walnut_id)
         cursor.execute(
             """
             INSERT INTO walnut_meshes (walnut_id, original_filename, stored_path, imported_at)
@@ -687,7 +700,7 @@ def get_active_lock_for_walnut(walnut_id: int) -> dict[str, Any] | None:
 def lock_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int) -> int:
     left, right = normalize_pair(walnut_id_1, walnut_id_2)
     timestamp = now_str()
-    with db_connection() as conn:
+    with db_connection(immediate=True) as conn:
         cursor = conn.cursor()
         _validate_pair_variety(cursor, variety_id, left, right)
         if cursor.execute(
@@ -755,15 +768,16 @@ def lock_pair(variety_id: int, walnut_id_1: int, walnut_id_2: int) -> int:
 
 
 def unlock_pair(pair_id: int) -> None:
-    with db_connection() as conn:
-        row = conn.execute(
+    with db_connection(immediate=True) as conn:
+        cursor = conn.cursor()
+        row = cursor.execute(
             "SELECT walnut_id_1, walnut_id_2 FROM locked_pairs WHERE id = ? AND is_active = 1",
             (pair_id,),
         ).fetchone()
         if not row:
             return
         timestamp = now_str()
-        conn.execute(
+        cursor.execute(
             """
             UPDATE locked_pairs
             SET is_active = 0, unlocked_at = ?
@@ -771,7 +785,7 @@ def unlock_pair(pair_id: int) -> None:
             """,
             (timestamp, pair_id),
         )
-        conn.execute(
+        cursor.execute(
             "UPDATE walnuts SET is_locked = 0, updated_at = ? WHERE id IN (?, ?)",
             (timestamp, row["walnut_id_1"], row["walnut_id_2"]),
         )
@@ -781,7 +795,7 @@ def create_blacklist_pair(
     variety_id: int, walnut_id_1: int, walnut_id_2: int, reason: str | None = None
 ) -> int:
     left, right = normalize_pair(walnut_id_1, walnut_id_2)
-    with db_connection() as conn:
+    with db_connection(immediate=True) as conn:
         cursor = conn.cursor()
         _validate_pair_variety(cursor, variety_id, left, right)
         if cursor.execute(
@@ -815,6 +829,19 @@ def create_blacklist_pair(
             (left, right),
         ).fetchone()
         return int(row["id"])
+
+
+def _assert_walnut_unlocked(cursor, walnut_id: int) -> None:
+    """Guard against writes racing with a lock created by another connection."""
+    if cursor.execute(
+        """
+        SELECT 1 FROM locked_pairs
+        WHERE is_active = 1 AND (walnut_id_1 = ? OR walnut_id_2 = ?)
+        LIMIT 1
+        """,
+        (walnut_id, walnut_id),
+    ).fetchone():
+        raise ValueError("已锁定的核桃不能修改，请先解除锁定。")
 
 
 def _validate_pair_variety(
@@ -855,15 +882,3 @@ def delete_blacklist_pair(blacklist_id: int) -> bool:
         return cursor.rowcount > 0
 
 
-def is_pair_blacklisted(walnut_id_1: int, walnut_id_2: int) -> bool:
-    left, right = normalize_pair(walnut_id_1, walnut_id_2)
-    with db_connection() as conn:
-        row = conn.execute(
-            """
-            SELECT 1
-            FROM pair_blacklist
-            WHERE walnut_id_1 = ? AND walnut_id_2 = ?
-            """,
-            (left, right),
-        ).fetchone()
-        return row is not None
