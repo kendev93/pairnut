@@ -1,6 +1,6 @@
 ---
 name: pairnut-release
-description: PairNut project release workflow. Use when preparing, validating, tagging, pushing, or troubleshooting a PairNut version release; updating pyproject/package version, pairnut.__version__, CHANGELOG.md, GitHub Actions packaging, GitHub Release notes, or Gitee Release handoff.
+description: PairNut project release workflow. Use when preparing, validating, tagging, pushing, or troubleshooting a PairNut version release; updating pyproject/package version, pairnut.__version__, CHANGELOG.md, GitHub Actions packaging, or GitHub Release notes.
 ---
 
 # PairNut Release
@@ -16,7 +16,7 @@ Use this skill to prepare and publish PairNut desktop releases without losing th
 - `CHANGELOG.md` must include a matching `## vX.Y.Z` section.
 - GitHub Actions build workflow triggers on `push` tags matching `v*`.
 - GitHub Release is mainly used to collect Windows/macOS build artifacts.
-- User-facing update checks read Gitee Releases, so GitHub Release assets and notes still need to be copied to Gitee manually unless explicit Gitee upload automation is added.
+- User-facing update checks read GitHub Releases, so publishing the GitHub Release is the last step that makes an update visible to users.
 
 ## Standard Workflow
 

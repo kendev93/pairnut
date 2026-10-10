@@ -26,10 +26,10 @@ class _Response:
 
 
 class UpdateTests(unittest.TestCase):
-    def test_default_update_source_uses_gitee_release_api(self) -> None:
+    def test_default_update_source_uses_github_release_api(self) -> None:
         self.assertEqual(
             LATEST_RELEASE_URL,
-            "https://gitee.com/api/v5/repos/ck0318/pairnut/releases/latest",
+            "https://api.github.com/repos/kendev93/pairnut/releases/latest",
         )
 
     def test_version_comparison_accepts_release_tags(self) -> None:
