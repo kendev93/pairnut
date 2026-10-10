@@ -880,5 +880,3 @@ def delete_blacklist_pair(blacklist_id: int) -> bool:
             "DELETE FROM pair_blacklist WHERE id = ?", (blacklist_id,)
         )
         return cursor.rowcount > 0
-
-

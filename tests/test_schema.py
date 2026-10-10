@@ -119,7 +119,9 @@ class SchemaTests(unittest.TestCase):
         ]
         return variety_id, walnut_ids[0], walnut_ids[1]
 
-    def _insert_active_lock(self, variety_id: int, walnut_id_1: int, walnut_id_2: int) -> None:
+    def _insert_active_lock(
+        self, variety_id: int, walnut_id_1: int, walnut_id_2: int
+    ) -> None:
         with db_connection() as conn:
             conn.execute(
                 """
@@ -128,7 +130,11 @@ class SchemaTests(unittest.TestCase):
                 )
                 VALUES (?, ?, ?, '2026-01-01T00:00:00', 1)
                 """,
-                (variety_id, min(walnut_id_1, walnut_id_2), max(walnut_id_1, walnut_id_2)),
+                (
+                    variety_id,
+                    min(walnut_id_1, walnut_id_2),
+                    max(walnut_id_1, walnut_id_2),
+                ),
             )
 
     def test_duplicate_active_locks_are_repaired_on_startup(self) -> None:

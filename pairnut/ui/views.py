@@ -1948,9 +1948,7 @@ class PairNutMainWindow(QMainWindow):
         counts = load_dashboard_counts()
         self._update_metric_widget(self.variety_count_label, str(counts.varieties))
         self._update_metric_widget(self.walnut_count_label, str(counts.walnuts))
-        self._update_metric_widget(
-            self.locked_count_label, str(counts.locked_pairs)
-        )
+        self._update_metric_widget(self.locked_count_label, str(counts.locked_pairs))
 
     def _refresh_current_tab(self, index: int | None = None) -> None:
         if index is None:

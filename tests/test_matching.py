@@ -374,5 +374,3 @@ class MatchingTests(unittest.TestCase):
             get_matching_view_data(self.variety_id)
 
         self.assertEqual(list_walnuts.call_count, 1)
-
-

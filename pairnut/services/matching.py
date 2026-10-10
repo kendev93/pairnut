@@ -368,6 +368,3 @@ def lock_candidate_pair(
     if not candidate.is_strict_match:
         raise ValueError("该配对超出品种统一偏差，不能直接锁定。")
     return repositories.lock_pair(variety_id, walnut_id_1, walnut_id_2)
-
-
-

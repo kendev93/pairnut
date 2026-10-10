@@ -40,9 +40,7 @@ def load_pairing_board(
     )
     walnuts_by_id = {int(walnut["id"]): walnut for walnut in walnuts}
     locks_by_walnut: dict[int, dict] = {}
-    for lock in repositories.list_locked_pairs(
-        variety_id=variety_id, active_only=True
-    ):
+    for lock in repositories.list_locked_pairs(variety_id=variety_id, active_only=True):
         locks_by_walnut[int(lock["walnut_id_1"])] = lock
         locks_by_walnut[int(lock["walnut_id_2"])] = lock
     return PairingBoard(

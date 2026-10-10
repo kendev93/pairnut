@@ -55,9 +55,7 @@ class PairingTests(unittest.TestCase):
     def test_board_shares_unlocked_candidates_keyed_by_walnut_id(self) -> None:
         board = load_pairing_board(self.variety_id)
 
-        candidate_ids = {
-            item.walnut_id for item in board.candidates_by_walnut[self.w1]
-        }
+        candidate_ids = {item.walnut_id for item in board.candidates_by_walnut[self.w1]}
 
         self.assertIn(self.w2, candidate_ids)
         self.assertEqual(set(board.walnuts_by_id), {self.w1, self.w2, self.w3})
